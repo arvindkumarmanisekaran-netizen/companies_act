@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Backend (Uvicorn)",
+      "type": "shell",
+      "command": "source .venv/bin/activate && uvicorn backend.app.main:app",
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "group": "dev-servers"
+      }
+    },
+    {
+      "label": "Start Frontend (Vite/Next)",
+      "type": "shell",
+      "command": "cd frontend && npm run dev",
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "group": "dev-servers"
+      }
+    },
+    {
+      "label": "Start Full Stack",
+      "dependsOn": [
+        "Start Backend (Uvicorn)",
+        "Start Frontend (Vite/Next)"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

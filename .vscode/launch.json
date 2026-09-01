@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Uvicorn FastAPI",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "backend.app.main:app",
+                "--reload"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+       {
+        "name": "Attach to Mullvad (9222)",
+        "type": "chrome",
+        "request": "attach",
+        "port": 6000,
+        "url": "http://localhost:5173",
+        "webRoot": "${workspaceFolder}/frontend/src",
+        "skipFiles": ["<node_internals>/**"]
+    }
+
+    ]
+}
