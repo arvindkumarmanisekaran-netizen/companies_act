@@ -1,0 +1,877 @@
+{
+  "filename": "Companies_Amendment_2020.pdf",
+  "sha256": "a410fd0b944ca799603280de9008e471993300219b41def07872acfb2c1dd07b",
+  "kind": "amendment",
+  "model": "gemini-3.5-flash-lite",
+  "parsed": {
+    "document_title": "THE COMPANIES (AMENDMENT) ACT, 2020",
+    "act_number": "29 OF 2020",
+    "publication_date": "28th September, 2020",
+    "amendments": [
+      {
+        "principal_section": "2",
+        "operation": "inserted",
+        "target": "section 2, in clause (52)",
+        "enacted_text": "Provided that such class of companies, which have listed or intend to list such class of securities, as may be prescribed in consultation with the Securities and Exchange Board, shall not be considered as listed companies.",
+        "source_excerpt": "2. In the Companies Act, 2013 (hereinafter referred to as the principal Act), in section 2, in clause (52), the following proviso shall be inserted, namely:— \"Provided that such class of companies, which have listed or intend to list such class of securities, as may be prescribed in consultation with the Securities and Exchange Board, shall not be considered as listed companies.\".",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "8",
+        "operation": "omitted",
+        "target": "section 8, in sub-section (11), the words \"with imprisonment for a term which may extend to three years or\"",
+        "enacted_text": "",
+        "source_excerpt": "3. In section 8 of the principal Act, in sub-section (11),— (a) the words \"with imprisonment for a term which may extend to three years or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "8",
+        "operation": "substituted",
+        "target": "section 8, in sub-section (11), the words \"twenty-five lakh rupees, or with both\"",
+        "enacted_text": "twenty-five lakh rupees",
+        "source_excerpt": "3. In section 8 of the principal Act, in sub-section (11),— ... (b) for the words \"twenty-five lakh rupees, or with both\", the words \"twenty-five lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "16",
+        "operation": "substituted",
+        "target": "section 16, in sub-section (1), in clause (b), the words \"period of six months\"",
+        "enacted_text": "period of three months",
+        "source_excerpt": "4. In section 16 of the principal Act,— (i) in sub-section (1), in clause (b), for the words \"period of six months\", the words \"period of three months\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "16",
+        "operation": "substituted",
+        "target": "section 16, sub-section (3)",
+        "enacted_text": "(3) If a company is in default in complying with any direction given under sub-section (1), the Central Government shall allot a new name to the company in such manner as may be prescribed and the Registrar shall enter the new name in the register of companies in place of the old name and issue a fresh certificate of incorporation with the new name, which the company shall use thereafter: Provided that nothing in this sub-section shall prevent a company from subsequently changing its name in accordance with the provisions of section 13.",
+        "source_excerpt": "4. In section 16 of the principal Act,— ... (ii) for sub-section (3), the following sub-section shall be substituted, namely:— \"(3) If a company is in default in complying with any direction given under sub-section (1), the Central Government shall allot a new name to the company in such manner as may be prescribed and the Registrar shall enter the new name in the register of companies in place of the old name and issue a fresh certificate of incorporation with the new name, which the company shall use thereafter: Provided that nothing in this sub-section shall prevent a company from subsequently changing its name in accordance with the provisions of section 13.\".",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "23",
+        "operation": "inserted",
+        "target": "section 23, after sub-section (2) and before the Explanation",
+        "enacted_text": "(3) Such class of public companies may issue such class of securities for the purposes of listing on permitted stock exchanges in permissible foreign jurisdictions or such other jurisdictions, as may be prescribed. (4) The Central Government may, by notification, exempt any class or classes of public companies referred to in sub-section (3) from any of the provisions of this Chapter, Chapter IV, section 89, section 90 or section 127 and a copy of every such notification shall, as soon as may be after it is issued, be laid before both Houses of Parliament.",
+        "source_excerpt": "5. In section 23 of the principal Act, after sub-section (2) and before the Explanation, the following sub-sections shall be inserted, namely:— \"(3) Such class of public companies may issue such class of securities for the purposes of listing on permitted stock exchanges in permissible foreign jurisdictions or such other jurisdictions, as may be prescribed. (4) The Central Government may, by notification, exempt any class or classes of public companies referred to in sub-section (3) from any of the provisions of this Chapter, Chapter IV, section 89, section 90 or section 127 and a copy of every such notification shall, as soon as may be after it is issued, be laid before both Houses of Parliament.\".",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "26",
+        "operation": "omitted",
+        "target": "section 26, in sub-section (9), the words \"with imprisonment for a term which may extend to three years or\"",
+        "enacted_text": "",
+        "source_excerpt": "6. In section 26 of the principal Act, in sub-section (9),— (a) the words \"with imprisonment for a term which may extend to three years or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "26",
+        "operation": "substituted",
+        "target": "section 26, in sub-section (9), the words \"three lakh rupees, or with both\"",
+        "enacted_text": "three lakh rupees",
+        "source_excerpt": "6. In section 26 of the principal Act, in sub-section (9),— ... (b) for the words \"three lakh rupees, or with both\", the words \"three lakh rupees'' shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "40",
+        "operation": "omitted",
+        "target": "section 40, in sub-section (5), the words \"with imprisonment for a term which may extend to one year or\"",
+        "enacted_text": "",
+        "source_excerpt": "7. In section 40 of the principal Act, in sub-section (5),— (a) the words \"with imprisonment for a term which may extend to one year or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "40",
+        "operation": "substituted",
+        "target": "section 40, in sub-section (5), the words \"three lakh rupees, or with both\"",
+        "enacted_text": "three lakh rupees",
+        "source_excerpt": "7. In section 40 of the principal Act, in sub-section (5),— ... (b) for the words \"three lakh rupees, or with both\", the words \"three lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "2"
+      },
+      {
+        "principal_section": "48",
+        "operation": "omitted",
+        "target": "section 48, sub-section (5)",
+        "enacted_text": "",
+        "source_excerpt": "8. In section 48 of the principal Act, sub-section (5) shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "56",
+        "operation": "substituted",
+        "target": "section 56, sub-section (6)",
+        "enacted_text": "(6) Where any default is made in complying with the provisions of sub-sections (1) to (5), the company and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.",
+        "source_excerpt": "9. In section 56 of the principal Act, for sub-section (6), the following sub-section shall be substituted, namely:— \"(6) Where any default is made in complying with the provisions of sub-sections (1) to (5), the company and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "59",
+        "operation": "omitted",
+        "target": "section 59, sub-section (5)",
+        "enacted_text": "",
+        "source_excerpt": "10. In section 59 of the principal Act, sub-section (5) shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "62",
+        "operation": "inserted",
+        "target": "section 62, in sub-section (1), in clause (a), in sub-clause (i), after the words \"less than fifteen days\"",
+        "enacted_text": "or such lesser number of days as may be prescribed",
+        "source_excerpt": "11. In section 62 of the principal Act, in sub-section (1), in clause (a), in sub-clause (i), after the words \"less than fifteen days\", the words \"or such lesser number of days as may be prescribed\" shall be inserted.",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "64",
+        "operation": "substituted",
+        "target": "section 64, in sub-section (2), the words \"one thousand rupees\"",
+        "enacted_text": "five hundred rupees",
+        "source_excerpt": "12. In section 64 of the principal Act, in sub-section (2),— (a) for the words \"one thousand rupees\", the words \"five hundred rupees\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "64",
+        "operation": "substituted",
+        "target": "section 64, in sub-section (2), the words \"or five lakh rupees whichever is less\"",
+        "enacted_text": "subject to a maximum of five lakh rupees in case of a company and one lakh rupees in case of an officer who is in default",
+        "source_excerpt": "12. In section 64 of the principal Act, in sub-section (2),— ... (b) for the words \"or five lakh rupees whichever is less\", the words \"subject to a maximum of five lakh rupees in case of a company and one lakh rupees in case of an officer who is in default\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "66",
+        "operation": "omitted",
+        "target": "section 66, sub-section (11)",
+        "enacted_text": "",
+        "source_excerpt": "13. In section 66 of the principal Act, sub-section (11) shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "68",
+        "operation": "omitted",
+        "target": "section 68, in sub-section (11), the words \"with imprisonment for a term which may extend to three years or\"",
+        "enacted_text": "",
+        "source_excerpt": "14. In section 68 of the principal Act, in sub-section (11),— (a) the words \"with imprisonment for a term which may extend to three years or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "68",
+        "operation": "substituted",
+        "target": "section 68, in sub-section (11), the words \"three lakh rupees, or with both\"",
+        "enacted_text": "three lakh rupees",
+        "source_excerpt": "14. In section 68 of the principal Act, in sub-section (11),— ... (b) for the words \"three lakh rupees, or with both\", the words \"three lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "71",
+        "operation": "omitted",
+        "target": "section 71, sub-section (11)",
+        "enacted_text": "",
+        "source_excerpt": "15. In section 71 of the principal Act, sub-section (11) shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "86",
+        "operation": "substituted",
+        "target": "section 86, sub-section (1)",
+        "enacted_text": "(1) If any company is in default in complying with any of the provisions of this Chapter, the company shall be liable to a penalty of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.",
+        "source_excerpt": "16. In section 86 of the principal Act, for sub-section (1), the following sub-section shall be substituted, namely:— \"(1) If any company is in default in complying with any of the provisions of this Chapter, the company shall be liable to a penalty of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "88",
+        "operation": "substituted",
+        "target": "section 88, sub-section (5)",
+        "enacted_text": "(5) If a company does not maintain a register of members or debenture-holders or other security holders or fails to maintain them in accordance with the provisions of sub-section (1) or sub-section (2), the company shall be liable to a penalty of three lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.",
+        "source_excerpt": "17. In section 88 of the principal Act, for sub-section (5), the following sub-section shall be substituted, namely:— \"(5) If a company does not maintain a register of members or debenture-holders or other security holders or fails to maintain them in accordance with the provisions of sub-section (1) or sub-section (2), the company shall be liable to a penalty of three lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "89",
+        "operation": "substituted",
+        "target": "section 89, sub-section (5)",
+        "enacted_text": "(5) If any person fails to make a declaration as required under sub-section (1) or sub-section (2) or sub-section (3), he shall be liable to a penalty of fifty thousand rupees and in case of continuing failure, with a further penalty of two hundred rupees for each day after the first during which such failure continues, subject to a maximum of five lakh rupees.",
+        "source_excerpt": "18. In section 89 of the principal Act,— (a) for sub-section (5), the following sub-section shall be substituted, namely:— \"(5) If any person fails to make a declaration as required under sub-section (1) or sub-section (2) or sub-section (3), he shall be liable to a penalty of fifty thousand rupees and in case of continuing failure, with a further penalty of two hundred rupees for each day after the first during which such failure continues, subject to a maximum of five lakh rupees.\";",
+        "effective_date": "Not specified",
+        "page_reference": "3"
+      },
+      {
+        "principal_section": "89",
+        "operation": "substituted",
+        "target": "section 89, sub-section (7)",
+        "enacted_text": "(7) If a company, required to file a return under sub-section (6), fails to do so before the expiry of the time specified therein, the company and every officer of the company who is in default shall be liable to a penalty of one thousand rupees for each day during which such failure continues, subject to a maximum of five lakh rupees in the case of a company and two lakh rupees in case of an officer who is in default.",
+        "source_excerpt": "18. In section 89 of the principal Act,— ... (b) for sub-section (7), the following sub-section shall be substituted, namely:— \"(7) If a company, required to file a return under sub-section (6), fails to do so before the expiry of the time specified therein, the company and every officer of the company who is in default shall be liable to a penalty of one thousand rupees for each day during which such failure continues, subject to a maximum of five lakh rupees in the case of a company and two lakh rupees in case of an officer who is in default.\";",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "89",
+        "operation": "inserted",
+        "target": "section 89, after sub-section (10)",
+        "enacted_text": "(11) The Central Government may, by notification, exempt any class or classes of persons from complying with any of the requirements of this section, except sub-section (10), if it is considered necessary to grant such exemption in the public interest and any such exemption may be granted either unconditionally or subject to such conditions as may be specified in the notification.",
+        "source_excerpt": "18. In section 89 of the principal Act,— ... (c) after sub-section (10), the following sub-section shall be inserted, namely:— \"(11) The Central Government may, by notification, exempt any class or classes of persons from complying with any of the requirements of this section, except sub-section (10), if it is considered necessary to grant such exemption in the public interest and any such exemption may be granted either unconditionally or subject to such conditions as may be specified in the notification.\".",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "90",
+        "operation": "substituted",
+        "target": "section 90, sub-section (10)",
+        "enacted_text": "(10) If any person fails to make a declaration as required under sub-section (1), he shall be liable to a penalty of fifty thousand rupees and in case of continuing failure, with a further penalty of one thousand rupees for each day after the first during which such failure continues, subject to a maximum of two lakh rupees.",
+        "source_excerpt": "19. In section 90 of the principal Act,— (a) for sub-section (10), the following sub-section shall be substituted, namely:— \"(10) If any person fails to make a declaration as required under sub-section (1), he shall be liable to a penalty of fifty thousand rupees and in case of continuing failure, with a further penalty of one thousand rupees for each day after the first during which such failure continues, subject to a maximum of two lakh rupees.\";",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "90",
+        "operation": "substituted",
+        "target": "section 90, sub-section (11)",
+        "enacted_text": "(11) If a company, required to maintain register under sub-section (2) and file the information under sub-section (4) or required to take necessary steps under sub-section (4A), fails to do so or denies inspection as provided therein, the company shall be liable to a penalty of one lakh rupees and in case of continuing failure, with a further penalty of five hundred rupees for each day, after the first during which such failure continues, subject to a maximum of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of twenty-five thousand rupees and in case of continuing failure, with a further penalty of two hundred rupees for each day, after the first during which such failure continues, subject to a maximum of one lakh rupees.",
+        "source_excerpt": "19. In section 90 of the principal Act,— ... (b) for sub-section (11), the following sub-section shall be substituted, namely:— \"(11) If a company, required to maintain register under sub-section (2) and file the information under sub-section (4) or required to take necessary steps under sub-section (4A), fails to do so or denies inspection as provided therein, the company shall be liable to a penalty of one lakh rupees and in case of continuing failure, with a further penalty of five hundred rupees for each day, after the first during which such failure continues, subject to a maximum of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of twenty-five thousand rupees and in case of continuing failure, with a further penalty of two hundred rupees for each day, after the first during which such failure continues, subject to a maximum of one lakh rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "92",
+        "operation": "substituted",
+        "target": "section 92, in sub-section (5), the words \"fifty thousand rupees\"",
+        "enacted_text": "ten thousand rupees",
+        "source_excerpt": "20. In section 92 of the principal Act,— (a) in sub-section (5),— (i) for the words \"fifty thousand rupees\", the words \"ten thousand rupees\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "92",
+        "operation": "substituted",
+        "target": "section 92, in sub-section (5), the words \"five lakh rupees\"",
+        "enacted_text": "two lakh rupees in case of a company and fifty thousand rupees in case of an officer who is in default",
+        "source_excerpt": "20. In section 92 of the principal Act,— (a) in sub-section (5),— ... (ii) for the words \"five lakh rupees\", the words \"two lakh rupees in case of a company and fifty thousand rupees in case of an officer who is in default\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "92",
+        "operation": "substituted",
+        "target": "section 92, in sub-section (6), the words \"punishable with fine which shall not be less than fifty thousand rupees but which may extend to five lakh rupees\"",
+        "enacted_text": "liable to a penalty of two lakh rupees",
+        "source_excerpt": "20. In section 92 of the principal Act,— ... (b) in sub-section (6), for the words \"punishable with fine which shall not be less than fifty thousand rupees but which may extend to five lakh rupees\", the words \"liable to a penalty of two lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "105",
+        "operation": "substituted",
+        "target": "section 105, in sub-section (5), the words \"who knowingly issues the invitations as aforesaid or wilfully authorises or permits their issue shall be punishable with fine which may extend to one lakh rupees\"",
+        "enacted_text": "who issues the invitation as aforesaid or authorises or permits their issue, shall be liable to a penalty of fifty thousand rupees",
+        "source_excerpt": "21. In section 105 of the principal Act, in sub-section (5),— (a) for the words \"who knowingly issues the invitations as aforesaid or wilfully authorises or permits their issue shall be punishable with fine which may extend to one lakh rupees\", the words \"who issues the invitation as aforesaid or authorises or permits their issue, shall be liable to a penalty of fifty thousand rupees\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "4"
+      },
+      {
+        "principal_section": "105",
+        "operation": "substituted",
+        "target": "section 105, in sub-section (5), proviso, the word \"punishable\"",
+        "enacted_text": "liable",
+        "source_excerpt": "21. In section 105 of the principal Act, in sub-section (5),— ... (b) in the proviso, for the word \"punishable\", the word \"liable\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "5"
+      },
+      {
+        "principal_section": "117",
+        "operation": "substituted",
+        "target": "section 117, sub-section (2)",
+        "enacted_text": "(2) If any company fails to file the resolution or the agreement under sub-section (1) before the expiry of the period specified therein, such company shall be liable to a penalty of ten thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day after the first during which such failure continues, subject to a maximum of two lakh rupees and every officer of the company who is in default including liquidator of the company, if any, shall be liable to a penalty of ten thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day after the first during which such failure continues, subject to a maximum of fifty thousand rupees.",
+        "source_excerpt": "22. In section 117 of the principal Act,— (i) for sub-section (2), the following sub-section shall be substituted, namely:— \"(2) If any company fails to file the resolution or the agreement under sub-section (1) before the expiry of the period specified therein, such company shall be liable to a penalty of ten thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day after the first during which such failure continues, subject to a maximum of two lakh rupees and every officer of the company who is in default including liquidator of the company, if any, shall be liable to a penalty of ten thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day after the first during which such failure continues, subject to a maximum of fifty thousand rupees.\";",
+        "effective_date": "Not specified",
+        "page_reference": "5"
+      },
+      {
+        "principal_section": "117",
+        "operation": "substituted",
+        "target": "section 117, in sub-section (3), in clause (g), the second proviso",
+        "enacted_text": "Provided further that nothing contained in this clause shall apply in respect of a resolution passed to grant loans, or give guarantee or provide security in respect of loans under clause (f) of sub-section (3) of section 179 in the ordinary course of its business by,— (a) a banking company; (b) any class of non-banking financial company registered under Chapter IIIB of the Reserve Bank of India Act, 1934, as may be prescribed in consultation with the Reserve Bank of India; (c) any class of housing finance company registered under the National Housing Bank Act, 1987, as may be prescribed in consultation with the National Housing Bank; and",
+        "source_excerpt": "22. In section 117 of the principal Act,— ... (ii) in sub-section (3), in clause (g), for the second proviso, the following proviso shall be substituted, namely:— \"Provided further that nothing contained in this clause shall apply in respect of a resolution passed to grant loans, or give guarantee or provide security in respect of loans under clause (f) of sub-section (3) of section 179 in the ordinary course of its business by,— (a) a banking company; (b) any class of non-banking financial company registered under Chapter IIIB of the Reserve Bank of India Act, 1934, as may be prescribed in consultation with the Reserve Bank of India; (c) any class of housing finance company registered under the National Housing Bank Act, 1987, as may be prescribed in consultation with the National Housing Bank; and\".",
+        "effective_date": "Not specified",
+        "page_reference": "5"
+      },
+      {
+        "principal_section": "124",
+        "operation": "substituted",
+        "target": "section 124, sub-section (7)",
+        "enacted_text": "(7) If a company fails to comply with any of the requirements of this section, such company shall be liable to a penalty of one lakh rupees and in case of continuing failure, with a further penalty of five hundred rupees for each day after the first during which such failure continues, subject to a maximum of ten lakh rupees and every officer of the company who is in default shall be liable to a penalty of twenty-five thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day after the first during which such failure continues, subject to a maximum of two lakh rupees.",
+        "source_excerpt": "23. In section 124 of the principal Act, for sub-section (7), the following sub-section shall be substituted, namely:— \"(7) If a company fails to comply with any of the requirements of this section, such company shall be liable to a penalty of one lakh rupees and in case of continuing failure, with a further penalty of five hundred rupees for each day after the first during which such failure continues, subject to a maximum of ten lakh rupees and every officer of the company who is in default shall be liable to a penalty of twenty-five thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day after the first during which such failure continues, subject to a maximum of two lakh rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "5"
+      },
+      {
+        "principal_section": "128",
+        "operation": "omitted",
+        "target": "section 128, in sub-section (6), the words \"with imprisonment for a term which may extend to one year or\"",
+        "enacted_text": "",
+        "source_excerpt": "24. In section 128 of the principal Act, in sub-section (6),— (a) the words \"with imprisonment for a term which may extend to one year or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "5"
+      },
+      {
+        "principal_section": "128",
+        "operation": "omitted",
+        "target": "section 128, in sub-section (6), the words \"or with both\"",
+        "enacted_text": "",
+        "source_excerpt": "24. In section 128 of the principal Act, in sub-section (6),— ... (b) the words \"or with both\" shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "5"
+      },
+      {
+        "principal_section": "129A",
+        "operation": "inserted",
+        "target": "after section 129",
+        "enacted_text": "129A. The Central Government may, require such class or classes of unlisted companies, as may be prescribed,— (a) to prepare the financial results of the company on such periodical basis and in such form as may be prescribed; (b) to obtain approval of the Board of Directors and complete audit or limited review of such periodical financial results in such manner as may be prescribed; and (c) file a copy with the Registrar within a period of thirty days of completion of the relevant period with such fees as may be prescribed.",
+        "source_excerpt": "25. After section 129 of the principal Act, the following section shall be inserted, namely:— \"129A. The Central Government may, require such class or classes of unlisted companies, as may be prescribed,— (a) to prepare the financial results of the company on such periodical basis and in such form as may be prescribed; (b) to obtain approval of the Board of Directors and complete audit or limited review of such periodical financial results in such manner as may be prescribed; and (c) file a copy with the Registrar within a period of thirty days of completion of the relevant period with such fees as may be prescribed.\".",
+        "effective_date": "Not specified",
+        "page_reference": "5"
+      },
+      {
+        "principal_section": "134",
+        "operation": "substituted",
+        "target": "section 134, sub-section (8)",
+        "enacted_text": "(8) If a company is in default in complying with the provisions of this section, the company shall be liable to a penalty of three lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.",
+        "source_excerpt": "26. In section 134 of the principal Act, for sub-section (8), the following sub-section shall be substituted, namely:— \"(8) If a company is in default in complying with the provisions of this section, the company shall be liable to a penalty of three lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "135",
+        "operation": "inserted",
+        "target": "section 135, in sub-section (5), after the second proviso",
+        "enacted_text": "Provided also that if the company spends an amount in excess of the requirements provided under this sub-section, such company may set off such excess amount against the requirement to spend under this sub-section for such number of succeeding financial years and in such manner, as may be prescribed.",
+        "source_excerpt": "27. In section 135 of the principal Act,— (a) in sub-section (5), after the second proviso, the following proviso shall be inserted, namely:— \"Provided also that if the company spends an amount in excess of the requirements provided under this sub-section, such company may set off such excess amount against the requirement to spend under this sub-section for such number of succeeding financial years and in such manner, as may be prescribed.\";",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "135",
+        "operation": "substituted",
+        "target": "section 135, sub-section (7)",
+        "enacted_text": "(7) If a company is in default in complying with the provisions of sub-section (5) or sub-section (6), the company shall be liable to a penalty of twice the amount required to be transferred by the company to the Fund specified in Schedule VII or the Unspent Corporate Social Responsibility Account, as the case may be, or one crore rupees, whichever is less, and every officer of the company who is in default shall be liable to a penalty of one-tenth of the amount required to be transferred by the company to such Fund specified in Schedule VII, or the Unspent Corporate Social Responsibility Account, as the case may be, or two lakh rupees, whichever is less.",
+        "source_excerpt": "27. In section 135 of the principal Act,— ... (b) for sub-section (7), the following sub-section shall be substituted, namely:— \"(7) If a company is in default in complying with the provisions of sub-section (5) or sub-section (6), the company shall be liable to a penalty of twice the amount required to be transferred by the company to the Fund specified in Schedule VII or the Unspent Corporate Social Responsibility Account, as the case may be, or one crore rupees, whichever is less, and every officer of the company who is in default shall be liable to a penalty of one-tenth of the amount required to be transferred by the company to such Fund specified in Schedule VII, or the Unspent Corporate Social Responsibility Account, as the case may be, or two lakh rupees, whichever is less.\";",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "135",
+        "operation": "inserted",
+        "target": "section 135, after sub-section (8)",
+        "enacted_text": "(9) Where the amount to be spent by a company under sub-section (5) does not exceed fifty lakh rupees, the requirement under sub-section (1) for constitution of the Corporate Social Responsibility Committee shall not be applicable and the functions of such Committee provided under this section shall, in such cases, be discharged by the Board of Directors of such company.",
+        "source_excerpt": "27. In section 135 of the principal Act,— ... (c) after sub-section (8), the following sub-section shall be inserted, namely:— \"(9) Where the amount to be spent by a company under sub-section (5) does not exceed fifty lakh rupees, the requirement under sub-section (1) for constitution of the Corporate Social Responsibility Committee shall not be applicable and the functions of such Committee provided under this section shall, in such cases, be discharged by the Board of Directors of such company.\".",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "137",
+        "operation": "substituted",
+        "target": "section 137, in sub-section (3), the words \"one thousand rupees for every day during which the failure continues but which shall not be more than ten lakh rupees\"",
+        "enacted_text": "ten thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day during which such failure continues, subject to a maximum of two lakh rupees",
+        "source_excerpt": "28. In section 137 of the principal Act, in sub-section (3),— (a) for the words \"one thousand rupees for every day during which the failure continues but which shall not be more than ten lakh rupees\", the words \"ten thousand rupees and in case of continuing failure, with a further penalty of one hundred rupees for each day during which such failure continues, subject to a maximum of two lakh rupees,\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "137",
+        "operation": "substituted",
+        "target": "section 137, in sub-section (3), the words \"one lakh rupees\"",
+        "enacted_text": "ten thousand rupees",
+        "source_excerpt": "28. In section 137 of the principal Act, in sub-section (3),— ... (b) for the words \"one lakh rupees\", the words \"ten thousand rupees\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "137",
+        "operation": "substituted",
+        "target": "section 137, in sub-section (3), the words \"five lakh rupees\"",
+        "enacted_text": "fifty thousand rupees",
+        "source_excerpt": "28. In section 137 of the principal Act, in sub-section (3),— ... (c) for the words \"five lakh rupees\", the words \"fifty thousand rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "140",
+        "operation": "substituted",
+        "target": "section 140, in sub-section (3), the words \"five lakh rupees\"",
+        "enacted_text": "two lakh rupees",
+        "source_excerpt": "29. In section 140 of the principal Act, in sub-section (3), for the words \"five lakh rupees\", the words \"two lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "6"
+      },
+      {
+        "principal_section": "143",
+        "operation": "substituted",
+        "target": "section 143, sub-section (15)",
+        "enacted_text": "(15) If any auditor, cost accountant, or company secretary in practice does not comply with the provisions of sub-section (12), he shall,— (a) in case of a listed company, be liable to a penalty of five lakh rupees; and (b) in case of any other company, be liable to a penalty of one lakh rupees.",
+        "source_excerpt": "30. In section 143 of the principal Act, for sub-section (15), the following sub-section shall be substituted, namely:— \"(15) If any auditor, cost accountant, or company secretary in practice does not comply with the provisions of sub-section (12), he shall,— (a) in case of a listed company, be liable to a penalty of five lakh rupees; and (b) in case of any other company, be liable to a penalty of one lakh rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "147",
+        "operation": "omitted",
+        "target": "section 147, in sub-section (1), the words \"with imprisonment for a term which may extend to one year or\"",
+        "enacted_text": "",
+        "source_excerpt": "31. In section 147 of the principal Act,— (a) in sub-section (1),— (i) the words \"with imprisonment for a term which may extend to one year or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "147",
+        "operation": "substituted",
+        "target": "section 147, in sub-section (1), the words \"one lakh rupees, or with both\"",
+        "enacted_text": "one lakh rupees",
+        "source_excerpt": "31. In section 147 of the principal Act,— (a) in sub-section (1),— ... (ii) for the words \"one lakh rupees, or with both\", the words \"one lakh rupees\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "147",
+        "operation": "omitted",
+        "target": "section 147, in sub-section (2), the word and figures \"section 143\"",
+        "enacted_text": "",
+        "source_excerpt": "31. In section 147 of the principal Act,— ... (b) in sub-section (2), the word and figures, \"section 143\" shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "149",
+        "operation": "inserted",
+        "target": "section 149, in sub-section (9)",
+        "enacted_text": "Provided that if a company has no profits or its profits are inadequate, an independent director may receive remuneration, exclusive of any fees payable under sub-section (5) of section 197, in accordance with the provisions of Schedule V.",
+        "source_excerpt": "32. In section 149 of the principal Act, in sub-section (9), the following proviso shall be inserted, namely:— \"Provided that if a company has no profits or its profits are inadequate, an independent director may receive remuneration, exclusive of any fees payable under sub-section (5) of section 197, in accordance with the provisions of Schedule V.\".",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "165",
+        "operation": "substituted",
+        "target": "section 165, sub-section (6)",
+        "enacted_text": "(6) If a person accepts an appointment as a director in violation of this section, he shall be liable to a penalty of two thousand rupees for each day after the first during which such violation continues, subject to a maximum of two lakh rupees.",
+        "source_excerpt": "33. In section 165 of the principal Act, for sub-section (6), the following sub-section shall be substituted, namely:— \"(6) If a person accepts an appointment as a director in violation of this section, he shall be liable to a penalty of two thousand rupees for each day after the first during which such violation continues, subject to a maximum of two lakh rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "167",
+        "operation": "omitted",
+        "target": "section 167, in sub-section (2), the words \"with imprisonment for a term which may extend to one year or\"",
+        "enacted_text": "",
+        "source_excerpt": "34. In section 167 of the principal Act, in sub-section (2),— (a) the words \"with imprisonment for a term which may extend to one year or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "167",
+        "operation": "substituted",
+        "target": "section 167, in sub-section (2), the words \"five lakh rupees, or with both\"",
+        "enacted_text": "five lakh rupees",
+        "source_excerpt": "34. In section 167 of the principal Act, in sub-section (2),— ... (b) for the words \"five lakh rupees, or with both\", the words \"five lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "172",
+        "operation": "substituted",
+        "target": "section 172",
+        "enacted_text": "172. If a company is in default in complying with any of the provisions of this Chapter and for which no specific penalty or punishment is provided therein, the company and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees, and in case of continuing failure, with a further penalty of five hundred rupees for each day during which such failure continues, subject to a maximum of three lakh rupees in case of a company and one lakh rupees in case of an officer who is in default.",
+        "source_excerpt": "35. For section 172 of the principal Act, the following section shall be substituted, namely:— \"172. If a company is in default in complying with any of the provisions of this Chapter and for which no specific penalty or punishment is provided therein, the company and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees, and in case of continuing failure, with a further penalty of five hundred rupees for each day during which such failure continues, subject to a maximum of three lakh rupees in case of a company and one lakh rupees in case of an officer who is in default.\".",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "178",
+        "operation": "substituted",
+        "target": "section 178, in sub-section (8), the words \"punishable with fine which shall not be less than one lakh rupees but which may extend to five lakh rupees and every officer of the company who is in default shall be punishable with imprisonment for a term which may extend to one year or with fine which shall not be less than twenty-five thousand rupees but which may extend to one lakh rupees, or with both\"",
+        "enacted_text": "liable to a penalty of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of one lakh rupees",
+        "source_excerpt": "36. In section 178 of the principal Act, in sub-section (8), for the words \"punishable with fine which shall not be less than one lakh rupees but which may extend to five lakh rupees and every officer of the company who is in default shall be punishable with imprisonment for a term which may extend to one year or with fine which shall not be less than twenty-five thousand rupees but which may extend to one lakh rupees, or with both\", the words \"liable to a penalty of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of one lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "7"
+      },
+      {
+        "principal_section": "184",
+        "operation": "substituted",
+        "target": "section 184, in sub-section (4), the words \"punishable with imprisonment for a term which may extend to one year or with fine which may extend to one lakh rupees, or with both\"",
+        "enacted_text": "liable to a penalty of one lakh rupees",
+        "source_excerpt": "37. In section 184 of the principal Act, in sub-section (4), for the words \"punishable with imprisonment for a term which may extend to one year or with fine which may extend to one lakh rupees, or with both\", the words \"liable to a penalty of one lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "187",
+        "operation": "substituted",
+        "target": "section 187, sub-section (4)",
+        "enacted_text": "(4) If a company is in default in complying with the provisions of this section, the company shall be liable to a penalty of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.",
+        "source_excerpt": "38. In section 187 of the principal Act, for sub-section (4), the following sub-section shall be substituted, namely:— \"(4) If a company is in default in complying with the provisions of this section, the company shall be liable to a penalty of five lakh rupees and every officer of the company who is in default shall be liable to a penalty of fifty thousand rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "188",
+        "operation": "substituted",
+        "target": "section 188, in sub-section (5), clause (i), the words \"punishable with imprisonment for a term which may extend to one year or with fine which shall not be less than twenty-five thousand rupees but which may extend to five lakh rupees, or with both\"",
+        "enacted_text": "liable to a penalty of twenty-five lakh rupees",
+        "source_excerpt": "39. In section 188 of the principal Act, in sub-section (5),— (a) in clause (i), for the words \"punishable with imprisonment for a term which may extend to one year or with fine which shall not be less than twenty-five thousand rupees but which may extend to five lakh rupees, or with both\", the words \"liable to a penalty of twenty-five lakh rupees\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "188",
+        "operation": "substituted",
+        "target": "section 188, in sub-section (5), clause (ii), the words \"punishable with fine which shall not be less than twenty-five thousand rupees but which may extend to five lakh rupees\"",
+        "enacted_text": "liable to a penalty of five lakh rupees",
+        "source_excerpt": "39. In section 188 of the principal Act, in sub-section (5),— ... (b) in clause (ii), for the words \"punishable with fine which shall not be less than twenty-five thousand rupees but which may extend to five lakh rupees\", the words \"liable to a penalty of five lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "197",
+        "operation": "inserted",
+        "target": "section 197, in sub-section (3), after the words \"whole-time director or manager,\"",
+        "enacted_text": "or any other non-executive director, including an independent director",
+        "source_excerpt": "40. In section 197 of the principal Act, in sub-section (3), after the words \"whole-time director or manager,\", the words \"or any other non-executive director, including an independent director\" shall be inserted.",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "204",
+        "operation": "substituted",
+        "target": "section 204, in sub-section (4), the words \"punishable with fine which shall not be less than one lakh rupees but which may extend to five lakh rupees\"",
+        "enacted_text": "liable to a penalty of two lakh rupees",
+        "source_excerpt": "41. In section 204 of the principal Act, in sub-section (4), for the words \"punishable with fine which shall not be less than one lakh rupees but which may extend to five lakh rupees\", the words \"liable to a penalty of two lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "232",
+        "operation": "substituted",
+        "target": "section 232, sub-section (8)",
+        "enacted_text": "(8) If a company fails to comply with sub-section (5), the company and every officer of the company who is in default shall be liable to a penalty of twenty thousand rupees, and where the failure is a continuing one, with a further penalty of one thousand rupees for each day after the first during which such failure continues, subject to a maximum of three lakh rupees.",
+        "source_excerpt": "42. In section 232 of the principal Act, for sub-section (8), the following sub-section shall be substituted, namely:— \"(8) If a company fails to comply with sub-section (5), the company and every officer of the company who is in default shall be liable to a penalty of twenty thousand rupees, and where the failure is a continuing one, with a further penalty of one thousand rupees for each day after the first during which such failure continues, subject to a maximum of three lakh rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "242",
+        "operation": "omitted",
+        "target": "section 242, in sub-section (8), the words \"with imprisonment for a term which may extend to six months or\"",
+        "enacted_text": "",
+        "source_excerpt": "43. In section 242 of the principal Act, in sub-section (8),— (a) the words \"with imprisonment for a term which may extend to six months or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "242",
+        "operation": "substituted",
+        "target": "section 242, in sub-section (8), the words \"one lakh rupees, or with both\"",
+        "enacted_text": "one lakh rupees",
+        "source_excerpt": "43. In section 242 of the principal Act, in sub-section (8),— ... (b) for the words \"one lakh rupees, or with both\", the words \"one lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "243",
+        "operation": "omitted",
+        "target": "section 243, in sub-section (2), the words \"with imprisonment for a term which may extend to six months or\"",
+        "enacted_text": "",
+        "source_excerpt": "44. In section 243 of the principal Act, in sub-section (2),— (a) the words \"with imprisonment for a term which may extend to six months or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "243",
+        "operation": "substituted",
+        "target": "section 243, in sub-section (2), the words \"five lakh rupees, or with both\"",
+        "enacted_text": "five lakh rupees",
+        "source_excerpt": "44. In section 243 of the principal Act, in sub-section (2),— ... (b) for the words \"five lakh rupees, or with both\", the words \"five lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "247",
+        "operation": "substituted",
+        "target": "section 247, in sub-section (3), the words \"punishable with fine which shall not be less than twenty-five thousand rupees but which may extend to one lakh rupees\"",
+        "enacted_text": "liable to a penalty of fifty thousand rupees",
+        "source_excerpt": "45. In section 247 of the principal Act, in sub-section (3), for the words \"punishable with fine which shall not be less than twenty-five thousand rupees but which may extend to one lakh rupees\", the words \"liable to a penalty of fifty thousand rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "284",
+        "operation": "substituted",
+        "target": "section 284, sub-section (2)",
+        "enacted_text": "(2) If any person required to assist or cooperate with the Company Liquidator under sub-section (1) does not assist or cooperate, the Company Liquidator may make an application to the Tribunal for necessary directions. (3) On receiving an application under sub-section (2), the Tribunal shall, by an order, direct the person required to assist or cooperate with the Company Liquidator to comply with the instructions of the Company Liquidator and to cooperate with him in discharging his functions and duties.",
+        "source_excerpt": "46. In section 284 of the principal Act, for sub-section (2), the following sub-sections shall be substituted, namely:— \"(2) If any person required to assist or cooperate with the Company Liquidator under sub-section (1) does not assist or cooperate, the Company Liquidator may make an application to the Tribunal for necessary directions. (3) On receiving an application under sub-section (2), the Tribunal shall, by an order, direct the person required to assist or cooperate with the Company Liquidator to comply with the instructions of the Company Liquidator and to cooperate with him in discharging his functions and duties.\".",
+        "effective_date": "Not specified",
+        "page_reference": "8"
+      },
+      {
+        "principal_section": "302",
+        "operation": "substituted",
+        "target": "section 302, sub-section (3)",
+        "enacted_text": "(3) The Tribunal shall, within a period of thirty days from the date of the order,— (a) forward a copy of the order to the Registrar who shall record in the register relating to the company a minute of the dissolution of the company; and (b) direct the Company Liquidator to forward a copy of the order to the Registrar who shall record in the register relating to the company a minute of the dissolution of the company.",
+        "source_excerpt": "47. In section 302 of the principal Act,— (a) for sub-section (3), the following sub-section shall be substituted, namely:— \"(3) The Tribunal shall, within a period of thirty days from the date of the order,— (a) forward a copy of the order to the Registrar who shall record in the register relating to the company a minute of the dissolution of the company; and (b) direct the Company Liquidator to forward a copy of the order to the Registrar who shall record in the register relating to the company a minute of the dissolution of the company.\";",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "302",
+        "operation": "omitted",
+        "target": "section 302, sub-section (4)",
+        "enacted_text": "",
+        "source_excerpt": "47. In section 302 of the principal Act,— ... (b) sub-section (4) shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "342",
+        "operation": "omitted",
+        "target": "section 342, sub-section (6)",
+        "enacted_text": "",
+        "source_excerpt": "48. In section 342 of the principal Act, sub-section (6) shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "347",
+        "operation": "omitted",
+        "target": "section 347, in sub-section (4), the words \"with imprisonment for a term which may extend to six months or\"",
+        "enacted_text": "",
+        "source_excerpt": "49. In section 347 of the principal Act, in sub-section (4),— (a) the words \"with imprisonment for a term which may extend to six months or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "347",
+        "operation": "substituted",
+        "target": "section 347, in sub-section (4), the words \"fifty thousand rupees, or with both\"",
+        "enacted_text": "fifty thousand rupees",
+        "source_excerpt": "49. In section 347 of the principal Act, in sub-section (4),— ... (b) for the words \"fifty thousand rupees, or with both\", the words \"fifty thousand rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "348",
+        "operation": "substituted",
+        "target": "section 348, sub-section (6)",
+        "enacted_text": "(6) Where a Company Liquidator, who is an insolvency professional registered under the Insolvency and Bankruptcy Code, 2016 is in default in complying with the provisions of this section, then such default shall be deemed to be a contravention of the provisions of the said Code, and the rules and regulations made thereunder for the purposes of proceedings under Chapter VI of Part IV of that Code.",
+        "source_excerpt": "50. In section 348 of the principal Act,— (a) for sub-section (6), the following sub-section shall be substituted, namely:— \"(6) Where a Company Liquidator, who is an insolvency professional registered under the Insolvency and Bankruptcy Code, 2016 is in default in complying with the provisions of this section, then such default shall be deemed to be a contravention of the provisions of the said Code, and the rules and regulations made thereunder for the purposes of proceedings under Chapter VI of Part IV of that Code.\";",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "348",
+        "operation": "omitted",
+        "target": "section 348, sub-section (7)",
+        "enacted_text": "",
+        "source_excerpt": "50. In section 348 of the principal Act,— ... (b) sub-section (7) shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "356",
+        "operation": "substituted",
+        "target": "section 356, sub-section (2)",
+        "enacted_text": "(2) The Tribunal shall— (a) forward a copy of the order, within thirty days from the date thereof, to the Registrar who shall record the same; and (b) direct the Company Liquidator or the person on whose application the order was made, to file a certified copy of the order, within thirty days from the date thereof or such further period as allowed by the Tribunal, with the Registrar who shall record the same.",
+        "source_excerpt": "51. In section 356 of the principal Act, for sub-section (2), the following sub-section shall be substituted, namely:— \"(2) The Tribunal shall— (a) forward a copy of the order, within thirty days from the date thereof, to the Registrar who shall record the same; and (b) direct the Company Liquidator or the person on whose application the order was made, to file a certified copy of the order, within thirty days from the date thereof or such further period as allowed by the Tribunal, with the Registrar who shall record the same.\".",
+        "effective_date": "Not specified",
+        "page_reference": "9"
+      },
+      {
+        "principal_section": "378",
+        "operation": "inserted",
+        "target": "after section 378",
+        "enacted_text": "CHAPTER XXIA PRODUCER COMPANIES PART I PRELIMINARY ... PART XII RE-CONVERSION OF PRODUCER COMPANY TO INTER-STATE CO-OPERATIVE SOCIETY ... 378ZU. The Central Government may make rules for carrying out the purposes of this Chapter.",
+        "source_excerpt": "52. After section 378 of the principal Act, the following Chapter shall be inserted, namely:— ‘CHAPTER XXIA PRODUCER COMPANIES ... 378ZU. The Central Government may make rules for carrying out the purposes of this Chapter.’.",
+        "effective_date": "Not specified",
+        "page_reference": "10"
+      },
+      {
+        "principal_section": "379",
+        "operation": "omitted",
+        "target": "section 379, in sub-section (1), the proviso",
+        "enacted_text": "",
+        "source_excerpt": "53. In section 379 of the principal Act, in sub-section (1), the proviso shall be omitted.",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "392",
+        "operation": "omitted",
+        "target": "section 392, the words \"with imprisonment for a term which may extend to six months or\"",
+        "enacted_text": "",
+        "source_excerpt": "54. In section 392 of the principal Act,— (a) the words \"with imprisonment for a term which may extend to six months or\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "392",
+        "operation": "substituted",
+        "target": "section 392, the words \"five lakh rupees, or with both\"",
+        "enacted_text": "five lakh rupees",
+        "source_excerpt": "54. In section 392 of the principal Act,— ... (b) for the words \"five lakh rupees, or with both\", the words \"five lakh rupees\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "393",
+        "operation": "inserted",
+        "target": "after section 393",
+        "enacted_text": "393A. The Central Government may, by notification, exempt any class of— (a) foreign companies; (b) companies incorporated or to be incorporated outside India, whether the company has or has not established, or when formed may or may not establish, a place of business in India, as may be specified in the notification, from any of the provisions of this Chapter and a copy of every such notification shall, as soon as may be after it is made, be laid before both Houses of Parliament.",
+        "source_excerpt": "55. After section 393 of the principal Act, the following section shall be inserted, namely:— \"393A. The Central Government may, by notification, exempt any class of— (a) foreign companies; (b) companies incorporated or to be incorporated outside India, whether the company has or has not established, or when formed may or may not establish, a place of business in India, as may be specified in the notification, from any of the provisions of this Chapter and a copy of every such notification shall, as soon as may be after it is made, be laid before both Houses of Parliament.\".",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "403",
+        "operation": "substituted",
+        "target": "section 403, in sub-section (1), the third proviso",
+        "enacted_text": "Provided also that where there is default on two or more occasions in submitting, filing, registering or recording of such document, fact or information, as may be prescribed, it may, without prejudice to any other legal action or liability under this Act, be submitted, filed, registered or recorded, as the case may be, on payment of such higher additional fee, as may be prescribed.",
+        "source_excerpt": "56. In section 403 of the principal Act, in sub-section (1), for the third proviso, the following proviso shall be substituted, namely:— \"Provided also that where there is default on two or more occasions in submitting, filing, registering or recording of such document, fact or information, as may be prescribed, it may, without prejudice to any other legal action or liability under this Act, be submitted, filed, registered or recorded, as the case may be, on payment of such higher additional fee, as may be prescribed.\".",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "405",
+        "operation": "substituted",
+        "target": "section 405, sub-section (4)",
+        "enacted_text": "(4) If any company fails to comply with an order made under sub-section (1) or sub-section (3), or furnishes any information or statistics which is incorrect or incomplete in any material respect, the company and every officer of the company who is in default shall be liable to a penalty of twenty thousand rupees and in case of continuing failure, with a further penalty of one thousand rupees for each day after the first during which such failure continues, subject to a maximum of three lakh rupees.",
+        "source_excerpt": "57. In section 405 of the principal Act, for sub-section (4), the following sub-section shall be substituted, namely:— \"(4) If any company fails to comply with an order made under sub-section (1) or sub-section (3), or furnishes any information or statistics which is incorrect or incomplete in any material respect, the company and every officer of the company who is in default shall be liable to a penalty of twenty thousand rupees and in case of continuing failure, with a further penalty of one thousand rupees for each day after the first during which such failure continues, subject to a maximum of three lakh rupees.\".",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "410",
+        "operation": "omitted",
+        "target": "section 410, in the opening portion, the words \"not exceeding eleven\"",
+        "enacted_text": "",
+        "source_excerpt": "58. In section 410 of the principal Act,— (i) in the opening portion, the words \"not exceeding eleven\" shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "410",
+        "operation": "substituted",
+        "target": "section 410, in clause (b), the word, figures and letter \"section 53N\"",
+        "enacted_text": "section 53A",
+        "source_excerpt": "58. In section 410 of the principal Act,— ... (ii) in clause (b), for the word, figures and letter \"section 53N\", the word, figures and letter \"section 53A\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "33"
+      },
+      {
+        "principal_section": "418",
+        "operation": "inserted",
+        "target": "after section 418",
+        "enacted_text": "418A. (1) The powers of the Appellate Tribunal may be exercised by the Benches thereof to be constituted by the Chairperson: Provided that a Bench of the Appellate Tribunal shall have at least one Judicial Member and one Technical Member. (2) The Benches of the Appellate Tribunal shall ordinarily sit at New Delhi or such other places as the Central Government may, in consultation with the Chairperson, notify: Provided that the Central Government may, by notification, after consultation with the Chairperson, establish such number of Benches of the Appellate Tribunal, as it may consider necessary, to hear appeals against any direction, decision or order referred to in section 53A of the Competition Act, 2002 and under section 61 of the Insolvency and Bankruptcy Code, 2016.",
+        "source_excerpt": "59. After section 418 of the principal Act, the following section shall be inserted, namely:— \"418A. (1) The powers of the Appellate Tribunal may be exercised by the Benches thereof to be constituted by the Chairperson: Provided that a Bench of the Appellate Tribunal shall have at least one Judicial Member and one Technical Member. (2) The Benches of the Appellate Tribunal shall ordinarily sit at New Delhi or such other places as the Central Government may, in consultation with the Chairperson, notify: Provided that the Central Government may, by notification, after consultation with the Chairperson, establish such number of Benches of the Appellate Tribunal, as it may consider necessary, to hear appeals against any direction, decision or order referred to in section 53A of the Competition Act, 2002 and under section 61 of the Insolvency and Bankruptcy Code, 2016.\".",
+        "effective_date": "Not specified",
+        "page_reference": "34"
+      },
+      {
+        "principal_section": "435",
+        "operation": "substituted",
+        "target": "section 435, in sub-section (1), the words \"offences under this Act, by notification\"",
+        "enacted_text": "offences under this Act, except under section 452, by notification",
+        "source_excerpt": "60. In section 435 of the principal Act, in sub-section (1), for the words \"offences under this Act, by notification\", the words and figures \"offences under this Act, except under section 452, by notification\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "34"
+      },
+      {
+        "principal_section": "441",
+        "operation": "substituted",
+        "target": "section 441, sub-section (5)",
+        "enacted_text": "(5) If any officer or other employee of the company who fails to comply with any order made by the Tribunal or the Regional Director or any officer authorised by the Central Government under sub-section (4), the maximum amount of fine for the offence proposed to be compounded under this section shall be twice the amount provided in the corresponding section in which punishment for such offence is provided.",
+        "source_excerpt": "61. In section 441 of the principal Act, for sub-section (5), the following sub-section shall be substituted, namely:— \"(5) If any officer or other employee of the company who fails to comply with any order made by the Tribunal or the Regional Director or any officer authorised by the Central Government under sub-section (4), the maximum amount of fine for the offence proposed to be compounded under this section shall be twice the amount provided in the corresponding section in which punishment for such offence is provided.\".",
+        "effective_date": "Not specified",
+        "page_reference": "34"
+      },
+      {
+        "principal_section": "446B",
+        "operation": "substituted",
+        "target": "section 446B",
+        "enacted_text": "446B. Notwithstanding anything contained in this Act, if penalty is payable for non-compliance of any of the provisions of this Act by a One Person Company, small company, start-up company or Producer Company, or by any of its officer in default, or any other person in respect of such company, then such company, its officer in default or any other person, as the case may be, shall be liable to a penalty which shall not be more than one-half of the penalty specified in such provisions subject to a maximum of two lakh rupees in case of a company and one lakh rupees in case of an officer who is in default or any other person, as the case may be. Explanation.—For the purposes of this section,— (a) \"Producer Company\" means a company as defined in clause (l) of section 378A; (b) \"start-up company\" means a private company incorporated under this Act or under the Companies Act, 1956 and recognised as start-up in accordance with the notification issued by the Central Government in the Department for Promotion of Industry and Internal Trade.",
+        "source_excerpt": "62. For section 446B of the principal Act, the following section shall be substituted, namely:— '446B. Notwithstanding anything contained in this Act, if penalty is payable for non-compliance of any of the provisions of this Act by a One Person Company, small company, start-up company or Producer Company, or by any of its officer in default, or any other person in respect of such company, then such company, its officer in default or any other person, as the case may be, shall be liable to a penalty which shall not be more than one-half of the penalty specified in such provisions subject to a maximum of two lakh rupees in case of a company and one lakh rupees in case of an officer who is in default or any other person, as the case may be. Explanation.—For the purposes of this section,— (a) \"Producer Company\" means a company as defined in clause (l) of section 378A; (b) \"start-up company\" means a private company incorporated under this Act or under the Companies Act, 1956 and recognised as start-up in accordance with the notification issued by the Central Government in the Department for Promotion of Industry and Internal Trade.'.",
+        "effective_date": "Not specified",
+        "page_reference": "34"
+      },
+      {
+        "principal_section": "450",
+        "operation": "substituted",
+        "target": "section 450, the words \"punishable with fine which may extend to ten thousand rupees, and where the contravention is continuing one, with a further fine which may extend to one thousand rupees for every day after the first during which the contravention continues\"",
+        "enacted_text": "liable to a penalty of ten thousand rupees, and in case of continuing contravention, with a further penalty of one thousand rupees for each day after the first during which the contravention continues, subject to a maximum of two lakh rupees in case of a company and fifty thousand rupees in case of an officer who is in default or any other person",
+        "source_excerpt": "63. In section 450 of the principal Act, for the words \"punishable with fine which may extend to ten thousand rupees, and where the contravention is continuing one, with a further fine which may extend to one thousand rupees for every day after the first during which the contravention continues\", the words \"liable to a penalty of ten thousand rupees, and in case of continuing contravention, with a further penalty of one thousand rupees for each day after the first during which the contravention continues, subject to a maximum of two lakh rupees in case of a company and fifty thousand rupees in case of an officer who is in default or any other person\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "34"
+      },
+      {
+        "principal_section": "452",
+        "operation": "inserted",
+        "target": "section 452, in sub-section (2)",
+        "enacted_text": "Provided that the imprisonment of such officer or employee, as the case may be, shall not be ordered for wrongful possession or withholding of a dwelling unit, if the court is satisfied that the company has not paid to that officer or employee, as the case may be, any amount relating to— (a) provident fund, pension fund, gratuity fund or any other fund for the welfare of its officers or employees, maintained by the company; (b) compensation or liability for compensation under the Workmen's Compensation Act, 1923 in respect of death or disablement.",
+        "source_excerpt": "64. In section 452 of the principal Act, in sub-section (2), the following proviso shall be inserted, namely:— \"Provided that the imprisonment of such officer or employee, as the case may be, shall not be ordered for wrongful possession or withholding of a dwelling unit, if the court is satisfied that the company has not paid to that officer or employee, as the case may be, any amount relating to— (a) provident fund, pension fund, gratuity fund or any other fund for the welfare of its officers or employees, maintained by the company; (b) compensation or liability for compensation under the Workmen's Compensation Act, 1923 in respect of death or disablement.\".",
+        "effective_date": "Not specified",
+        "page_reference": "35"
+      },
+      {
+        "principal_section": "454",
+        "operation": "inserted",
+        "target": "section 454, in sub-section (3)",
+        "enacted_text": "Provided that in case the default relates to non-compliance of sub-section (4) of section 92 or sub-section (1) or sub-section (2) of section 137 and such default has been rectified either prior to, or within thirty days of, the issue of the notice by the adjudicating officer, no penalty shall be imposed in this regard and all proceedings under this section in respect of such default shall be deemed to be concluded.",
+        "source_excerpt": "65. In section 454 of the principal Act, in sub-section (3), the following proviso shall be inserted, namely:— \"Provided that in case the default relates to non-compliance of sub-section (4) of section 92 or sub-section (1) or sub-section (2) of section 137 and such default has been rectified either prior to, or within thirty days of, the issue of the notice by the adjudicating officer, no penalty shall be imposed in this regard and all proceedings under this section in respect of such default shall be deemed to be concluded.\".",
+        "effective_date": "Not specified",
+        "page_reference": "35"
+      },
+      {
+        "principal_section": "465",
+        "operation": "omitted",
+        "target": "section 465, in sub-section (1), the first proviso",
+        "enacted_text": "",
+        "source_excerpt": "66. In section 465 of the principal Act, in sub-section (1),— (a) the first proviso shall be omitted;",
+        "effective_date": "Not specified",
+        "page_reference": "35"
+      },
+      {
+        "principal_section": "465",
+        "operation": "substituted",
+        "target": "section 465, in sub-section (1), in the second proviso, the words \"Provided further that\"",
+        "enacted_text": "Provided that",
+        "source_excerpt": "66. In section 465 of the principal Act, in sub-section (1),— ... (b) in the second proviso, for the words \"Provided further that\", the words \"Provided that\" shall be substituted;",
+        "effective_date": "Not specified",
+        "page_reference": "35"
+      },
+      {
+        "principal_section": "465",
+        "operation": "substituted",
+        "target": "section 465, in sub-section (1), in the third proviso, the words \"Provided also that\"",
+        "enacted_text": "Provided further that",
+        "source_excerpt": "66. In section 465 of the principal Act, in sub-section (1),— ... (c) in the third proviso, for the words \"Provided also that\", the words \"Provided further that\" shall be substituted.",
+        "effective_date": "Not specified",
+        "page_reference": "35"
+      }
+    ]
+  }
+}
