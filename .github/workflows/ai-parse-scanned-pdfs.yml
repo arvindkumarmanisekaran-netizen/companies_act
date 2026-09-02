@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 300
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         include:
           - source: docs/Companies_Act_2013_Current.pdf
@@ -44,6 +44,7 @@ jobs:
       GEMINI_PDF_MODEL: gemini-2.5-flash-lite
       GEMINI_PDF_BATCH_PAGES: "20"
       GEMINI_PDF_OVERLAP_PAGES: "2"
+      GEMINI_REQUEST_DELAY_SECONDS: "6"
 
     steps:
       - name: Check API secret
