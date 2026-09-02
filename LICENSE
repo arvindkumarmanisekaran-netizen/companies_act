@@ -1,0 +1,25 @@
+# PolyForm Noncommercial License 1.0.0
+
+The original software code in this repository is licensed under the **PolyForm Noncommercial License 1.0.0**.
+
+Canonical license terms:
+
+<https://polyformproject.org/licenses/noncommercial/1.0.0/>
+
+Required Notice: Copyright © 2026 Arvind Kumar Manisekaran.
+
+## Scope
+
+Unless a file states otherwise, this license applies to original software source code authored for this repository, including code under:
+
+- `frontend/src/`
+- `scripts/`
+- project-authored workflow and configuration files
+
+It does not apply to statutory text, source PDFs, third-party works, dependency packages, or material identified in `THIRD-PARTY-NOTICES.md`.
+
+## Commercial licensing
+
+Commercial use is not granted under this license. Contact the repository owner through GitHub to request a separate commercial license.
+
+The canonical PolyForm terms control if this notice conflicts with the canonical license.
