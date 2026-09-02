@@ -42,8 +42,8 @@ jobs:
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_PDF_MODEL: gemini-3.5-flash-lite
-      GEMINI_PDF_BATCH_PAGES: "20"
-      GEMINI_PDF_OVERLAP_PAGES: "2"
+      GEMINI_PDF_BATCH_PAGES: "10"
+      GEMINI_PDF_OVERLAP_PAGES: "1"
       GEMINI_REQUEST_DELAY_SECONDS: "6"
 
     steps:
