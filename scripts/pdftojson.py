@@ -176,6 +176,9 @@ def parse_sections_robust(chap_content: str, footnotes: dict) -> list:
     for i in range(1, len(chunks), 2):
         sec_num = chunks[i].strip()
         full_body = chunks[i + 1].strip() if (i + 1) < len(chunks) else ""
+        # The zero-width split keeps the section marker at the beginning of the
+        # body. Remove it before deriving the title ("23. Title" -> "Title").
+        full_body = re.sub(rf"^{re.escape(sec_num)}\.\s*", "", full_body, count=1)
 
         lines = full_body.split("\n", 1)
         title_candidate = lines[0].strip()
