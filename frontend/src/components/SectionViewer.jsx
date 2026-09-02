@@ -114,6 +114,29 @@ export const SectionCard = ({ section }) => {
     new RegExp(`^${escapedSectionNumber}\\.\\s*`, "i"),
     "",
   );
+  const headingKey = (value) =>
+    String(value || "")
+      .replace(
+        new RegExp(
+          `^(?:section\\\\s+)?${escapedSectionNumber}[.：:–—-]?\\\\s*`,
+          "i",
+        ),
+        "",
+      )
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const subsections = section.subsections || [];
+  const visibleSubsections = subsections.filter(
+    (subsection) =>
+      !(
+        subsections.length > 1 &&
+        String(subsection.subsection_number || "").trim().toUpperCase() === "N/A" &&
+        !subsection.clauses?.length &&
+        !subsection.amendments?.length &&
+        headingKey(subsection.text) === headingKey(displayTitle)
+      ),
+  );
 
   return (
     <div
@@ -134,8 +157,8 @@ export const SectionCard = ({ section }) => {
         </p>
       )}
 
-      {section.subsections && section.subsections.length > 0 ? (
-        section.subsections.map((sub, idx) => (
+      {visibleSubsections.length > 0 ? (
+        visibleSubsections.map((sub, idx) => (
           <SubsectionRenderer
             key={`subsec-${section.section_number}-${sub.subsection_number}-${idx}`}
             subsection={sub}
