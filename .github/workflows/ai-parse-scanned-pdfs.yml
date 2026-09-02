@@ -41,7 +41,7 @@ jobs:
             output: Companies_Amendment_2020
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GEMINI_PDF_MODEL: gemini-2.5-flash-lite
+      GEMINI_PDF_MODEL: gemini-3.5-flash-lite
       GEMINI_PDF_BATCH_PAGES: "20"
       GEMINI_PDF_OVERLAP_PAGES: "2"
       GEMINI_REQUEST_DELAY_SECONDS: "6"
@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GEMINI_PDF_MODEL: gemini-2.5-flash-lite
+      GEMINI_PDF_MODEL: gemini-3.5-flash-lite
 
     steps:
       - name: Check out branch
