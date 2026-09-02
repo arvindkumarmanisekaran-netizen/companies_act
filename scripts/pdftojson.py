@@ -325,12 +325,12 @@ def _materially_different(first: str, second: str) -> bool:
 def _identifier_pattern(kind: str, identifier: str) -> re.Pattern:
     value = str(identifier).strip().strip("()")
     if kind == "section":
-        return re.compile(rf"\\bsection\\s+{re.escape(value)}\\b", re.IGNORECASE)
+        return re.compile(rf"\bsection\s+{re.escape(value)}\b", re.IGNORECASE)
     if kind == "clause":
         label = r"(?:sub-?clause|clause)"
     else:
         label = r"(?:sub-?section|subsection)"
-    return re.compile(rf"\\b{label}\\s*\\(\\s*{re.escape(value)}\\s*\\)", re.IGNORECASE)
+    return re.compile(rf"\b{label}\s*\(\s*{re.escape(value)}\s*\)", re.IGNORECASE)
 
 
 def _source_records(
@@ -351,7 +351,7 @@ def _source_records(
 
     section = re.escape(str(section_number))
     whole_section = re.compile(
-        rf"^(?:(?:in|after|before)\\s+)?section\\s+{section}\\s*$",
+        rf"^(?:(?:in|after|before)\s+)?section\s+{section}\s*$",
         re.IGNORECASE,
     )
     return [record for record in structured if whole_section.fullmatch(record.get("target", "").strip())]
