@@ -118,7 +118,7 @@ export const SectionCard = ({ section }) => {
     String(value || "")
       .replace(
         new RegExp(
-          `^(?:section\\\\s+)?${escapedSectionNumber}[.：:–—-]?\\\\s*`,
+          `^(?:section\\s+)?${escapedSectionNumber}[.：:–—-]?\\s*`,
           "i",
         ),
         "",
