@@ -1,0 +1,69 @@
+name: AI parse scanned legal PDFs
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/chapter-history
+    paths:
+      - .github/workflows/ai-parse-scanned-pdfs.yml
+      - scripts/ai_parse_scanned_amendments.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-parse-scanned-pdfs
+  cancel-in-progress: false
+
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_PDF_MODEL: gpt-5.6
+
+    steps:
+      - name: Check API secret
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::OPENAI_API_KEY repository secret is not configured."
+            exit 1
+          fi
+
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/chapter-history
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install AI parser dependencies
+        run: python -m pip install "openai>=2.0.0,<3" "pydantic>=2.0.0,<3"
+
+      - name: Parse scanned ordinances with PDF vision
+        run: python scripts/ai_parse_scanned_amendments.py
+
+      - name: Validate synchronized JSON
+        run: |
+          python -m json.tool docs/sections_master.json > /dev/null
+          python -m json.tool frontend/public/docs/sections_master.json > /dev/null
+          cmp docs/sections_master.json frontend/public/docs/sections_master.json
+
+      - name: Commit AI-parsed outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ai_parsed_amendments docs/sections_master.json frontend/public/docs/sections_master.json
+          if git diff --cached --quiet; then
+            echo "No AI parsing changes to commit."
+            exit 0
+          fi
+          git commit -m "Generate legal JSON with OpenAI PDF vision [skip ci]"
+          git push origin HEAD:fix/chapter-history
