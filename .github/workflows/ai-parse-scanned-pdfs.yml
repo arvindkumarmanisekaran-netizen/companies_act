@@ -8,7 +8,9 @@ on:
     paths:
       - .github/workflows/ai-parse-scanned-pdfs.yml
       - scripts/ai_parse_legal_documents.py
+      - scripts/ai_parse_with_checkpoint.py
       - scripts/test_ai_parse_legal_documents.py
+      - scripts/test_ai_parse_with_checkpoint.py
 
 permissions:
   contents: write
@@ -45,6 +47,10 @@ jobs:
       GEMINI_PDF_BATCH_PAGES: "10"
       GEMINI_PDF_OVERLAP_PAGES: "1"
       GEMINI_REQUEST_DELAY_SECONDS: "6"
+      GEMINI_MAX_RETRY_ATTEMPTS: "10"
+      GEMINI_RETRY_BASE_SECONDS: "5"
+      GEMINI_RETRY_MAX_SECONDS: "120"
+      GEMINI_RETRY_JITTER_SECONDS: "5"
 
     steps:
       - name: Check API secret
@@ -69,14 +75,34 @@ jobs:
         run: python -m pip install "google-genai>=1.0.0,<2" "pydantic>=2.0.0,<3" "pypdf>=5,<7"
 
       - name: Run parser unit tests
-        run: python -m unittest scripts.test_ai_parse_legal_documents
+        run: |
+          python -m unittest scripts.test_ai_parse_legal_documents
+          python -m unittest scripts.test_ai_parse_with_checkpoint
+
+      - name: Prepare checkpoint directory
+        run: mkdir -p ".ai-checkpoints/${{ matrix.output }}"
+
+      - name: Restore Gemini checkpoints
+        id: restore-checkpoints
+        uses: actions/cache/restore@v4
+        with:
+          path: .ai-checkpoints/${{ matrix.output }}
+          key: gemini-checkpoints-${{ matrix.output }}-${{ github.sha }}
 
       - name: AI-parse legal PDF
         run: |
           mkdir -p generated
-          python scripts/ai_parse_legal_documents.py \
+          python scripts/ai_parse_with_checkpoint.py \
             --source "${{ matrix.source }}" \
-            --output "generated/${{ matrix.output }}.json"
+            --output "generated/${{ matrix.output }}.json" \
+            --checkpoint-dir ".ai-checkpoints/${{ matrix.output }}"
+
+      - name: Save Gemini checkpoints
+        if: always() && steps.restore-checkpoints.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ai-checkpoints/${{ matrix.output }}
+          key: gemini-checkpoints-${{ matrix.output }}-${{ github.sha }}
 
       - name: Upload parsed document
         uses: actions/upload-artifact@v4
