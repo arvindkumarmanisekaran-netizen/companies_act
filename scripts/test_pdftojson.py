@@ -1,9 +1,17 @@
 import unittest
 
-from scripts.pdftojson import deduplicate_chapters, merge_bare_act_history
+from scripts.pdftojson import deduplicate_chapters, merge_bare_act_history, parse_sections_robust
 
 
 class ParserMergeTests(unittest.TestCase):
+    def test_section_number_is_not_repeated_in_title(self):
+        sections = parse_sections_robust(
+            "\n23. Public offer and placement.—The provision text.", {}
+        )
+
+        self.assertEqual(sections[0]["section_number"], "23")
+        self.assertEqual(sections[0]["title"], "Public offer and placement.")
+
     def test_duplicate_chapters_keep_the_richer_body_copy(self):
         chapters = [
             {"chapter_number": "CHAPTER I", "sections": []},
