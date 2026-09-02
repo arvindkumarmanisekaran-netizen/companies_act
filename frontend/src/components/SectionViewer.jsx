@@ -119,7 +119,7 @@ const AmendmentPdfModal = ({ sources, onClose }) => {
         className={`flex overflow-hidden rounded-xl bg-white shadow-2xl transition-all ${
           expanded
             ? "h-[calc(100vh-1.5rem)] w-[calc(100vw-1.5rem)]"
-            : "h-[min(76vh,720px)] w-[min(94vw,960px)]"
+            : "h-[min(70vh,600px)] w-[min(92vw,760px)]"
         }`}
       >
         <div className="flex min-w-0 flex-1 flex-col">
