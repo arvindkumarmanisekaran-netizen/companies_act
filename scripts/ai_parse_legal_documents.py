@@ -1,7 +1,7 @@
-"""AI-parse the non-ordinance Companies Act PDFs and assemble the viewer JSON.
+"""Gemini-parse the non-ordinance Companies Act PDFs and assemble the viewer JSON.
 
 PDF splitting is mechanical only. Every legal word and structural field written to
-the generated JSON is extracted by an OpenAI vision model.
+the generated JSON is extracted by a Gemini multimodal model.
 """
 
 from __future__ import annotations
@@ -12,11 +12,11 @@ import json
 import os
 import re
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
-from openai import OpenAI
 from pydantic import BaseModel, Field
 from pypdf import PdfReader, PdfWriter
 
@@ -31,9 +31,9 @@ DOCS_DIR = ROOT / "docs"
 AI_OUTPUT_DIR = DOCS_DIR / "ai_parsed_documents"
 MASTER_PATH = DOCS_DIR / "sections_master.json"
 FRONTEND_MASTER_PATH = ROOT / "frontend" / "public" / "docs" / "sections_master.json"
-MODEL = os.getenv("OPENAI_PDF_MODEL", "gpt-5.6-luna")
-BATCH_PAGES = int(os.getenv("OPENAI_PDF_BATCH_PAGES", "20"))
-OVERLAP_PAGES = int(os.getenv("OPENAI_PDF_OVERLAP_PAGES", "2"))
+MODEL = os.getenv("GEMINI_PDF_MODEL", "gemini-2.5-flash-lite")
+BATCH_PAGES = int(os.getenv("GEMINI_PDF_BATCH_PAGES", "20"))
+OVERLAP_PAGES = int(os.getenv("GEMINI_PDF_OVERLAP_PAGES", "2"))
 
 DOCUMENTS = {
     "Companies_Act_2013_Current.pdf": "current_act",
@@ -135,7 +135,7 @@ def split_pdf(pdf_path: Path, destination: Path) -> list[tuple[Path, int, int]]:
     page_count = len(reader.pages)
     stride = BATCH_PAGES - OVERLAP_PAGES
     if stride < 1:
-        raise ValueError("OPENAI_PDF_BATCH_PAGES must exceed OPENAI_PDF_OVERLAP_PAGES")
+        raise ValueError("GEMINI_PDF_BATCH_PAGES must exceed GEMINI_PDF_OVERLAP_PAGES")
 
     chunks = []
     start = 0
@@ -154,37 +154,43 @@ def split_pdf(pdf_path: Path, destination: Path) -> list[tuple[Path, int, int]]:
     return chunks
 
 
-def _parse_response(client: OpenAI, pdf_path: Path, prompt: str, schema, system_prompt: str):
-    uploaded = client.files.create(file=pdf_path.open("rb"), purpose="user_data")
-    try:
-        response = client.responses.parse(
-            model=MODEL,
-            store=False,
-            reasoning={"effort": "low"},
-            max_output_tokens=64000,
-            input=[
-                {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": system_prompt}],
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_file", "file_id": uploaded.id, "detail": "low"},
-                        {"type": "input_text", "text": prompt},
-                    ],
-                },
-            ],
-            text_format=schema,
-        )
-        if response.output_parsed is None:
-            raise RuntimeError(f"OpenAI returned no structured output for {pdf_path.name}")
-        return response.output_parsed
-    finally:
-        client.files.delete(uploaded.id)
+def _parse_response(client, pdf_path: Path, prompt: str, schema, system_prompt: str):
+    from google.genai import types
+
+    pdf_part = types.Part.from_bytes(
+        data=pdf_path.read_bytes(),
+        mime_type="application/pdf",
+    )
+    last_error = None
+    for attempt in range(1, 6):
+        try:
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=[pdf_part, prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    response_mime_type="application/json",
+                    response_schema=schema,
+                    max_output_tokens=65536,
+                ),
+            )
+            if not response.text:
+                raise RuntimeError(f"Gemini returned no structured output for {pdf_path.name}")
+            return schema.model_validate_json(response.text)
+        except Exception as error:
+            last_error = error
+            if attempt == 5:
+                break
+            delay = min(2**attempt, 30)
+            print(
+                f"Gemini request attempt {attempt} failed; retrying in {delay}s: {error}",
+                flush=True,
+            )
+            time.sleep(delay)
+    raise RuntimeError(f"Gemini failed to parse {pdf_path.name}") from last_error
 
 
-def parse_act(client: OpenAI, pdf_path: Path, doc_type: str) -> dict:
+def parse_act(client, pdf_path: Path, doc_type: str) -> dict:
     with tempfile.TemporaryDirectory(prefix="companies-act-ai-") as temp_dir:
         chunks = split_pdf(pdf_path, Path(temp_dir))
         parsed_chunks = []
@@ -227,7 +233,7 @@ def parse_act(client: OpenAI, pdf_path: Path, doc_type: str) -> dict:
     return merge_act_chunks(parsed_chunks, doc_type)
 
 
-def parse_amendment(client: OpenAI, pdf_path: Path) -> dict:
+def parse_amendment(client, pdf_path: Path) -> dict:
     parsed = _parse_response(
         client,
         pdf_path,
@@ -432,6 +438,7 @@ def assemble(input_dir: Path) -> None:
     )
     normalize_section_titles(master)
     master["ai_parse_metadata"] = {
+        "provider": "Google Gemini",
         "model": MODEL,
         "parsed_at": datetime.now(timezone.utc).isoformat(),
         "documents": [
@@ -469,7 +476,12 @@ def main() -> None:
     if kind is None:
         raise ValueError(f"Unsupported source {source.name}; ordinances are intentionally excluded")
 
-    client = OpenAI(max_retries=5, timeout=1800.0)
+    from google import genai
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is not configured")
+    client = genai.Client(api_key=api_key)
     parsed = parse_amendment(client, source) if kind == "amendment" else parse_act(client, source, kind)
     write_source_output(source, kind, parsed, args.output)
     print(f"Wrote AI-parsed {kind} JSON to {args.output}")
