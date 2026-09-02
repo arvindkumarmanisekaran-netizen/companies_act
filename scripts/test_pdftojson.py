@@ -64,7 +64,7 @@ class ParserMergeTests(unittest.TestCase):
                     "sections": [
                         {
                             "section_number": "1",
-                            "amendments": [{"note": "Subs. by Act 1 of 2020"}],
+                            "amendments": [],
                             "subsections": [
                                 {
                                     "subsection_number": "(1)",
@@ -81,13 +81,102 @@ class ParserMergeTests(unittest.TestCase):
             ]
         }
 
-        merged = merge_bare_act_history(current, bare, {})
+        amendment_sources = {
+            "1": [
+                {
+                    "operation": "substituted",
+                    "target": "section 1, clause (a)",
+                    "citation": "Substituted by Act 1 of 2020, section 1, clause (a).",
+                },
+                {
+                    "operation": "omitted",
+                    "target": "section 1, clause (b)",
+                    "citation": "Omitted by Act 1 of 2020, section 1, clause (b).",
+                },
+            ]
+        }
+        merged = merge_bare_act_history(current, bare, amendment_sources)
         history = merged["chapters"][0]["sections"][0]["subsections"][0][
             "historical_clauses"
         ]
 
         self.assertEqual([item["change_type"] for item in history], ["substituted", "omitted"])
         self.assertTrue(all("Act 1 of 2020" in item["source_note"] for item in history))
+
+    def test_clause_citations_are_exact_and_unamended_clauses_are_restored(self):
+        bare = {
+            "chapters": [
+                {
+                    "chapter_number": "CHAPTER I",
+                    "sections": [
+                        {
+                            "section_number": "2",
+                            "amendments": [],
+                            "subsections": [
+                                {
+                                    "subsection_number": "N/A",
+                                    "text": "Definitions",
+                                    "amendments": [],
+                                    "clauses": [
+                                        {"clause_number": "(6)", "text": "old associate company"},
+                                        {"clause_number": "(38)", "text": "expert definition"},
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        current = {
+            "chapters": [
+                {
+                    "chapter_number": "CHAPTER I",
+                    "sections": [
+                        {
+                            "section_number": "2",
+                            "amendments": [],
+                            "subsections": [
+                                {
+                                    "subsection_number": "N/A",
+                                    "text": "Definitions",
+                                    "amendments": [],
+                                    "clauses": [
+                                        {"clause_number": "(6)", "text": "new associate company"}
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+        sources = {
+            "2": [
+                {
+                    "operation": "substituted",
+                    "target": "section 2, clause (6), Explanation",
+                    "citation": "Substituted by the 2017 Act, section 2, clause (6).",
+                },
+                {
+                    "operation": "substituted",
+                    "target": "section 2, clause (28)",
+                    "citation": "Unrelated clause 28 citation.",
+                },
+            ]
+        }
+
+        merged = merge_bare_act_history(current, bare, sources)
+        subsection = merged["chapters"][0]["sections"][0]["subsections"][0]
+        history = subsection["historical_clauses"]
+
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["clause_number"], "(6)")
+        self.assertIn("clause (6)", history[0]["source_note"])
+        self.assertNotIn("clause 28", history[0]["source_note"])
+        restored = {item["clause_number"]: item for item in subsection["clauses"]}
+        self.assertEqual(restored["(38)"]["text"], "expert definition")
+        self.assertFalse(restored["(38)"].get("historical", False))
 
 
 if __name__ == "__main__":
