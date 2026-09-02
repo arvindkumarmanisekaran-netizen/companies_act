@@ -1,4 +1,4 @@
-name: AI parse scanned legal PDFs
+name: AI parse Companies Act PDFs
 
 on:
   workflow_dispatch:
@@ -7,22 +7,43 @@ on:
       - fix/chapter-history
     paths:
       - .github/workflows/ai-parse-scanned-pdfs.yml
-      - scripts/ai_parse_scanned_amendments.py
+      - scripts/ai_parse_legal_documents.py
+      - scripts/test_ai_parse_legal_documents.py
 
 permissions:
   contents: write
 
 concurrency:
-  group: ai-parse-scanned-pdfs
+  group: ai-parse-legal-pdfs
   cancel-in-progress: false
 
 jobs:
   parse:
+    name: Parse ${{ matrix.output }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - source: docs/Companies_Act_2013_Current.pdf
+            output: Companies_Act_2013_Current
+          - source: docs/Companies_Act_2013_Bare.pdf
+            output: Companies_Act_2013_Bare
+          - source: docs/Companies_Amendment_2015.pdf
+            output: Companies_Amendment_2015
+          - source: docs/Companies_Amendment_2017.pdf
+            output: Companies_Amendment_2017
+          - source: docs/Companies_Amendment_2019.pdf
+            output: Companies_Amendment_2019
+          - source: docs/Companies_Amendment_2020.pdf
+            output: Companies_Amendment_2020
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      OPENAI_PDF_MODEL: gpt-5.6
+      OPENAI_PDF_MODEL: gpt-5.6-luna
+      OPENAI_PDF_BATCH_PAGES: "20"
+      OPENAI_PDF_OVERLAP_PAGES: "2"
 
     steps:
       - name: Check API secret
@@ -44,10 +65,58 @@ jobs:
           python-version: "3.12"
 
       - name: Install AI parser dependencies
-        run: python -m pip install "openai>=2.0.0,<3" "pydantic>=2.0.0,<3"
+        run: python -m pip install "openai>=2.0.0,<3" "pydantic>=2.0.0,<3" "pypdf>=5,<7"
 
-      - name: Parse scanned ordinances with PDF vision
-        run: python scripts/ai_parse_scanned_amendments.py
+      - name: Run parser unit tests
+        run: python -m unittest scripts.test_ai_parse_legal_documents
+
+      - name: AI-parse legal PDF
+        run: |
+          mkdir -p generated
+          python scripts/ai_parse_legal_documents.py \
+            --source "${{ matrix.source }}" \
+            --output "generated/${{ matrix.output }}.json"
+
+      - name: Upload parsed document
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-${{ matrix.output }}
+          path: generated/${{ matrix.output }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    name: Assemble and commit legal JSON
+    needs: parse
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENAI_PDF_MODEL: gpt-5.6-luna
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/chapter-history
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install assembly dependencies
+        run: python -m pip install "openai>=2.0.0,<3" "pydantic>=2.0.0,<3" "pypdf>=5,<7"
+
+      - name: Download all AI-parsed documents
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ai-*
+          path: generated
+          merge-multiple: true
+
+      - name: Assemble master JSON
+        run: python scripts/ai_parse_legal_documents.py --assemble-dir generated
 
       - name: Validate synchronized JSON
         run: |
@@ -59,10 +128,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/ai_parsed_amendments docs/sections_master.json frontend/public/docs/sections_master.json
+          git add docs/ai_parsed_documents docs/sections_master.json frontend/public/docs/sections_master.json
           if git diff --cached --quiet; then
             echo "No AI parsing changes to commit."
             exit 0
           fi
-          git commit -m "Generate legal JSON with OpenAI PDF vision [skip ci]"
+          git commit -m "Generate Companies Act JSON with OpenAI [skip ci]"
           git push origin HEAD:fix/chapter-history
