@@ -398,18 +398,43 @@ def validate_amendment(document: ParsedAmendment, source: Path) -> None:
             raise ValueError(f"Missing legal wording for section {amendment.principal_section}")
 
 
-def amendment_source_map(parsed_amendments: list[dict]) -> dict[str, list[str]]:
-    result: dict[str, list[str]] = {}
+def amendment_source_map(parsed_amendments: list[dict]) -> dict[str, list[dict]]:
+    """Index amendment citations by principal section while retaining their exact targets."""
+    result: dict[str, list[dict]] = {}
     for document in parsed_amendments:
         title = document.get("document_title", "Companies Amendment Act")
+        act_number = document.get("act_number", "").strip()
         for amendment in document.get("amendments", []):
-            page = f", {amendment['page_reference']}" if amendment.get("page_reference") else ""
-            target = f" {amendment['target']}" if amendment.get("target") else ""
-            note = (
-                f"{title}: {amendment['operation']}{target} "
-                f"(section {amendment['principal_section']}{page})"
+            operation = amendment.get("operation", "amended")
+            target = amendment.get("target", "").strip()
+            page = amendment.get("page_reference", "").strip()
+            effective_date = amendment.get("effective_date", "").strip()
+            source_excerpt = amendment.get("source_excerpt", "").strip()
+
+            citation = f"{operation.capitalize()} by {title}"
+            if act_number:
+                citation += f" (Act {act_number})"
+            if target:
+                citation += f", {target}"
+            source_item = re.match(r"\\s*(?:(\\d+[A-Z]?)\\.|(\\([^)]+\\)))", source_excerpt)
+            if source_item:
+                item = source_item.group(1) or source_item.group(2)
+                citation += f", source item {item}"
+            if page:
+                citation += f", PDF page {page}"
+            if effective_date and effective_date.lower() not in {"not specified", "n/a"}:
+                citation += f"; effective {effective_date}"
+            citation += "."
+
+            section_number = str(amendment["principal_section"]).upper()
+            result.setdefault(section_number, []).append(
+                {
+                    "operation": operation,
+                    "target": target,
+                    "citation": citation,
+                    "source_excerpt": source_excerpt,
+                }
             )
-            result.setdefault(amendment["principal_section"].upper(), []).append(note)
     return result
 
 
