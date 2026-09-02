@@ -108,6 +108,12 @@ export const SubsectionRenderer = ({ subsection, historical = false }) => {
 
 export const SectionCard = ({ section }) => {
   if (!section) return null;
+  const sectionNumber = String(section.section_number || "");
+  const escapedSectionNumber = sectionNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const displayTitle = String(section.title || "").replace(
+    new RegExp(`^${escapedSectionNumber}\\.\\s*`, "i"),
+    "",
+  );
 
   return (
     <div
@@ -117,7 +123,7 @@ export const SectionCard = ({ section }) => {
     >
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h3 className="text-lg font-bold text-gray-900">
-          Section {section.section_number}: {section.title}
+          Section {section.section_number}: {displayTitle}
         </h3>
         {section.historical && <ChangeBadge type={section.change_type || "omitted"} />}
       </div>
