@@ -1,6 +1,7 @@
 import unittest
 
 from scripts.ai_parse_legal_documents import (
+    DOCUMENTS,
     amendment_source_map,
     merge_act_chunks,
     merge_legal_text,
@@ -28,6 +29,10 @@ def section(number, text, clause_text=""):
 
 
 class AiLegalParserTests(unittest.TestCase):
+    def test_document_manifest_excludes_ordinances(self):
+        self.assertEqual(len(DOCUMENTS), 6)
+        self.assertFalse(any("ordinance" in name.lower() for name in DOCUMENTS))
+
     def test_merge_legal_text_uses_overlap(self):
         self.assertEqual(
             merge_legal_text(
