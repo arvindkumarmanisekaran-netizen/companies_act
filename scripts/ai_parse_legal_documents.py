@@ -356,7 +356,7 @@ def merge_act_chunks(chunks: list[dict], doc_type: str) -> dict:
 
 def _heading_key(value: str, section_number: str) -> str:
     without_number = re.sub(
-        rf"^(?:section\\s+)?{re.escape(section_number)}[.：:–—-]?\\s*",
+        rf"^(?:section\s+)?{re.escape(section_number)}[.：:–—-]?\s*",
         "",
         str(value or "").strip(),
         count=1,
@@ -371,7 +371,7 @@ def normalize_section_titles(document: dict) -> None:
         for section in chapter.get("sections", []):
             number = str(section.get("section_number", "")).strip()
             section["title"] = re.sub(
-                rf"^(?:section\\s+)?{re.escape(number)}[.：:–—-]?\\s*",
+                rf"^(?:section\s+)?{re.escape(number)}[.：:–—-]?\s*",
                 "",
                 str(section.get("title", "")),
                 count=1,
