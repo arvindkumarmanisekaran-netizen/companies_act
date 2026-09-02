@@ -354,17 +354,44 @@ def merge_act_chunks(chunks: list[dict], doc_type: str) -> dict:
     return merged
 
 
+def _heading_key(value: str, section_number: str) -> str:
+    without_number = re.sub(
+        rf"^(?:section\\s+)?{re.escape(section_number)}[.：:–—-]?\\s*",
+        "",
+        str(value or "").strip(),
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"[^a-z0-9]+", " ", without_number.lower()).strip()
+
+
 def normalize_section_titles(document: dict) -> None:
+    """Normalize headings and remove title-only subsections created by batch overlap."""
     for chapter in document.get("chapters", []):
         for section in chapter.get("sections", []):
             number = str(section.get("section_number", "")).strip()
             section["title"] = re.sub(
-                rf"^(?:section\s+)?{re.escape(number)}[.:-]?\s*",
+                rf"^(?:section\\s+)?{re.escape(number)}[.：:–—-]?\\s*",
                 "",
                 str(section.get("title", "")),
                 count=1,
                 flags=re.IGNORECASE,
             )
+
+            subsections = section.get("subsections", [])
+            if len(subsections) < 2:
+                continue
+            title_key = _heading_key(section.get("title", ""), number)
+            section["subsections"] = [
+                subsection
+                for subsection in subsections
+                if not (
+                    str(subsection.get("subsection_number", "")).strip().upper() == "N/A"
+                    and not subsection.get("clauses")
+                    and not subsection.get("amendments")
+                    and _heading_key(subsection.get("text", ""), number) == title_key
+                )
+            ]
 
 
 def validate_act(document: dict, doc_type: str) -> None:
