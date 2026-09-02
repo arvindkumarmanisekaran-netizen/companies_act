@@ -92,6 +92,79 @@ class AiLegalParserTests(unittest.TestCase):
         normalize_section_titles(document)
         self.assertEqual(document["chapters"][0]["sections"][0]["title"], "Sample title")
 
+    def test_title_only_overlap_subsection_is_removed(self):
+        document = {
+            "chapters": [
+                {
+                    "sections": [
+                        {
+                            "section_number": "150",
+                            "title": "150. Manner of selection of independent directors.",
+                            "subsections": [
+                                {
+                                    "subsection_number": "(1)",
+                                    "text": "Substantive provision.",
+                                    "clauses": [],
+                                    "amendments": [],
+                                },
+                                {
+                                    "subsection_number": "N/A",
+                                    "text": "150. Manner of selection of independent directors.",
+                                    "clauses": [],
+                                    "amendments": [],
+                                },
+                            ],
+                        }
+                    ]
+                }
+            ]
+        }
+
+        normalize_section_titles(document)
+
+        section_150 = document["chapters"][0]["sections"][0]
+        self.assertEqual(
+            section_150["title"], "Manner of selection of independent directors."
+        )
+        self.assertEqual(
+            [item["subsection_number"] for item in section_150["subsections"]],
+            ["(1)"],
+        )
+
+    def test_substantive_unnumbered_subsection_is_retained(self):
+        document = {
+            "chapters": [
+                {
+                    "sections": [
+                        {
+                            "section_number": "10A",
+                            "title": "Commencement of business.",
+                            "subsections": [
+                                {
+                                    "subsection_number": "(1)",
+                                    "text": "Numbered provision.",
+                                    "clauses": [],
+                                    "amendments": [],
+                                },
+                                {
+                                    "subsection_number": "N/A",
+                                    "text": "A distinct substantive proviso.",
+                                    "clauses": [],
+                                    "amendments": [],
+                                },
+                            ],
+                        }
+                    ]
+                }
+            ]
+        }
+
+        normalize_section_titles(document)
+
+        self.assertEqual(
+            len(document["chapters"][0]["sections"][0]["subsections"]), 2
+        )
+
     def test_amendment_source_map_is_specific(self):
         sources = amendment_source_map(
             [
