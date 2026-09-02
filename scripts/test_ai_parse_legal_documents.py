@@ -97,6 +97,7 @@ class AiLegalParserTests(unittest.TestCase):
             [
                 {
                     "document_title": "Companies (Amendment) Act, 2019",
+                    "act_number": "22 of 2019",
                     "amendments": [
                         {
                             "principal_section": "10A",
@@ -108,8 +109,12 @@ class AiLegalParserTests(unittest.TestCase):
                 }
             ]
         )
-        self.assertIn("Companies (Amendment) Act, 2019", sources["10A"][0])
-        self.assertIn("page 2", sources["10A"][0])
+        record = sources["10A"][0]
+        self.assertEqual(record["target"], "section 10A")
+        self.assertEqual(record["operation"], "inserted")
+        self.assertIn("Companies (Amendment) Act, 2019", record["citation"])
+        self.assertIn("Act 22 of 2019", record["citation"])
+        self.assertIn("PDF page page 2", record["citation"])
 
 
 if __name__ == "__main__":
