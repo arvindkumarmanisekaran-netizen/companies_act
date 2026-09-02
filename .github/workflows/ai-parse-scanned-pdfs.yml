@@ -1,0 +1,183 @@
+name: Gemini parse Companies Act PDFs
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/chapter-history
+    paths:
+      - .github/workflows/ai-parse-scanned-pdfs.yml
+      - scripts/ai_parse_legal_documents.py
+      - scripts/pdftojson.py
+      - scripts/ai_parse_with_checkpoint.py
+      - scripts/run_ai_parse_checkpoint.py
+      - scripts/test_ai_parse_legal_documents.py
+      - scripts/test_pdftojson.py
+      - scripts/test_ai_parse_with_checkpoint.py
+      - frontend/src/components/SectionViewer.jsx
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ai-parse-legal-pdfs
+  cancel-in-progress: true
+
+jobs:
+  parse:
+    name: Parse ${{ matrix.output }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - source: docs/Companies_Act_2013_Current.pdf
+            output: Companies_Act_2013_Current
+          - source: docs/Companies_Act_2013_Bare.pdf
+            output: Companies_Act_2013_Bare
+          - source: docs/Companies_Amendment_2015.pdf
+            output: Companies_Amendment_2015
+          - source: docs/Companies_Amendment_2017.pdf
+            output: Companies_Amendment_2017
+          - source: docs/Companies_Amendment_2019.pdf
+            output: Companies_Amendment_2019
+          - source: docs/Companies_Amendment_2020.pdf
+            output: Companies_Amendment_2020
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_PDF_MODEL: gemini-3.5-flash-lite
+      GEMINI_PDF_BATCH_PAGES: "10"
+      GEMINI_PDF_OVERLAP_PAGES: "1"
+      GEMINI_REQUEST_DELAY_SECONDS: "6"
+      GEMINI_MAX_RETRY_ATTEMPTS: "10"
+      GEMINI_RETRY_BASE_SECONDS: "5"
+      GEMINI_RETRY_MAX_SECONDS: "120"
+      GEMINI_RETRY_JITTER_SECONDS: "5"
+
+    steps:
+      - name: Check API secret
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY repository secret is not configured."
+            exit 1
+          fi
+
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/chapter-history
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install AI parser dependencies
+        run: python -m pip install "google-genai>=1.0.0,<2" "pydantic>=2.0.0,<3" "pypdf>=5,<7"
+
+      - name: Run parser unit tests
+        run: |
+          python -m unittest scripts.test_ai_parse_legal_documents
+          python -m unittest scripts.test_pdftojson
+          python -m unittest scripts.test_ai_parse_with_checkpoint
+
+      - name: Prepare checkpoint directory
+        run: mkdir -p ".ai-checkpoints/${{ matrix.output }}"
+
+      - name: Restore Gemini checkpoints
+        id: restore-checkpoints
+        uses: actions/cache/restore@v4
+        with:
+          path: .ai-checkpoints/${{ matrix.output }}
+          key: gemini-checkpoints-${{ matrix.output }}-${{ github.sha }}
+          restore-keys: |
+            gemini-checkpoints-${{ matrix.output }}-
+
+      - name: AI-parse legal PDF
+        run: |
+          mkdir -p generated
+          python -m scripts.run_ai_parse_checkpoint \
+            --source "${{ matrix.source }}" \
+            --output "generated/${{ matrix.output }}.json" \
+            --checkpoint-dir ".ai-checkpoints/${{ matrix.output }}"
+
+      - name: Save Gemini checkpoints
+        if: always() && steps.restore-checkpoints.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ai-checkpoints/${{ matrix.output }}
+          key: gemini-checkpoints-${{ matrix.output }}-${{ github.sha }}
+
+      - name: Upload parsed document
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-${{ matrix.output }}
+          path: generated/${{ matrix.output }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble:
+    name: Assemble and commit legal JSON
+    needs: parse
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GEMINI_PDF_MODEL: gemini-3.5-flash-lite
+
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/chapter-history
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install assembly dependencies
+        run: python -m pip install "google-genai>=1.0.0,<2" "pydantic>=2.0.0,<3" "pypdf>=5,<7"
+
+      - name: Download all AI-parsed documents
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ai-*
+          path: generated
+          merge-multiple: true
+
+      - name: Assemble master JSON
+        run: python scripts/ai_parse_legal_documents.py --assemble-dir generated
+
+      - name: Validate synchronized JSON
+        run: |
+          python -m json.tool docs/sections_master.json > /dev/null
+          python -m json.tool frontend/public/docs/sections_master.json > /dev/null
+          cmp docs/sections_master.json frontend/public/docs/sections_master.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend with generated JSON
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+
+      - name: Commit AI-parsed outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ai_parsed_documents docs/sections_master.json frontend/public/docs/sections_master.json
+          if git diff --cached --quiet; then
+            echo "No AI parsing changes to commit."
+            exit 0
+          fi
+          git commit -m "Generate Companies Act JSON with Gemini [skip ci]"
+          git push origin HEAD:fix/chapter-history

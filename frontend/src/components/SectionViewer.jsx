@@ -1,8 +1,51 @@
-import React, { useEffect } from "react";
+import React from "react";
 
-export const SubsectionRenderer = ({ subsection }) => {
+const ChangeBadge = ({ type }) => {
+  if (!type || type === "active") return null;
+  const label = type === "substituted" ? "Substituted wording" : "Omitted wording";
+  const colors =
+    type === "substituted"
+      ? "bg-amber-100 text-amber-800 border-amber-200"
+      : "bg-red-100 text-red-800 border-red-200";
+
   return (
-    <div className="mb-4 pl-4 border-l-2 border-gray-200">
+    <span className={`inline-flex px-2 py-0.5 rounded border text-[11px] font-bold uppercase ${colors}`}>
+      {label}
+    </span>
+  );
+};
+
+const HistoricalEntry = ({ entry, prefix }) => (
+  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      <ChangeBadge type={entry.change_type} />
+      {prefix && <span className="font-semibold text-gray-700">{prefix}</span>}
+    </div>
+    {entry.text && <p className="leading-relaxed text-gray-800">{entry.text}</p>}
+    {entry.clauses?.map((clause, index) => (
+      <div key={`historical-nested-${clause.clause_number || index}-${index}`} className="mt-2 flex gap-2">
+        <span className="font-semibold text-amber-800">{clause.clause_number}</span>
+        <span>{clause.text}</span>
+      </div>
+    ))}
+    <p className="mt-2 border-t border-amber-200 pt-2 text-xs text-amber-900">
+      <strong>Amendment note:</strong> {entry.source_note}
+    </p>
+  </div>
+);
+
+export const SubsectionRenderer = ({ subsection, historical = false }) => {
+  return (
+    <div
+      className={`mb-4 pl-4 border-l-2 ${
+        historical ? "border-amber-400 bg-amber-50/40 py-3 pr-3" : "border-gray-200"
+      }`}
+    >
+      {historical && (
+        <div className="mb-2">
+          <ChangeBadge type={subsection.change_type || "omitted"} />
+        </div>
+      )}
       <div className="flex items-start gap-2">
         {subsection.subsection_number && subsection.subsection_number !== "N/A" && (
           <span className="font-bold text-gray-700">{subsection.subsection_number}</span>
@@ -37,29 +80,85 @@ export const SubsectionRenderer = ({ subsection }) => {
           ))}
         </div>
       )}
+
+      {subsection.historical_clauses?.map((clause, idx) => (
+        <HistoricalEntry
+          key={`historical-clause-${clause.clause_number || idx}-${idx}`}
+          entry={clause}
+          prefix={clause.clause_number}
+        />
+      ))}
+
+      {subsection.historical_versions?.map((version, idx) => (
+        <HistoricalEntry
+          key={`historical-version-${version.subsection_number || idx}-${idx}`}
+          entry={version}
+          prefix="Originally enacted text"
+        />
+      ))}
+
+      {historical && subsection.source_note && (
+        <p className="mt-2 text-xs text-amber-900">
+          <strong>Amendment note:</strong> {subsection.source_note}
+        </p>
+      )}
     </div>
   );
 };
 
 export const SectionCard = ({ section }) => {
-  useEffect(() => {
-    if (section?.title) {
-      console.log(
-        `[Section ${section.section_number}] Loaded ${section.subsections?.length || 0} subsections`,
-      );
-    }
-  }, [section]);
-
   if (!section) return null;
+  const sectionNumber = String(section.section_number || "");
+  const escapedSectionNumber = sectionNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const displayTitle = String(section.title || "").replace(
+    new RegExp(`^${escapedSectionNumber}\\.\\s*`, "i"),
+    "",
+  );
+  const headingKey = (value) =>
+    String(value || "")
+      .replace(
+        new RegExp(
+          `^(?:section\\s+)?${escapedSectionNumber}[.：:–—-]?\\s*`,
+          "i",
+        ),
+        "",
+      )
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  const subsections = section.subsections || [];
+  const visibleSubsections = subsections.filter(
+    (subsection) =>
+      !(
+        subsections.length > 1 &&
+        String(subsection.subsection_number || "").trim().toUpperCase() === "N/A" &&
+        !subsection.clauses?.length &&
+        !subsection.amendments?.length &&
+        headingKey(subsection.text) === headingKey(displayTitle)
+      ),
+  );
 
   return (
-    <div className="p-6 bg-white shadow-md rounded-lg mb-6 border border-gray-200">
-      <h3 className="text-lg font-bold text-gray-900 mb-3">
-        Section {section.section_number}: {section.title}
-      </h3>
+    <div
+      className={`p-6 shadow-md rounded-lg mb-6 border ${
+        section.historical ? "bg-red-50/40 border-red-200" : "bg-white border-gray-200"
+      }`}
+    >
+      <div className="mb-3 flex flex-wrap items-center gap-3">
+        <h3 className="text-lg font-bold text-gray-900">
+          Section {section.section_number}: {displayTitle}
+        </h3>
+        {section.historical && <ChangeBadge type={section.change_type || "omitted"} />}
+      </div>
 
-      {section.subsections && section.subsections.length > 0 ? (
-        section.subsections.map((sub, idx) => (
+      {section.historical && section.source_note && (
+        <p className="mb-4 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          <strong>Amendment note:</strong> {section.source_note}
+        </p>
+      )}
+
+      {visibleSubsections.length > 0 ? (
+        visibleSubsections.map((sub, idx) => (
           <SubsectionRenderer
             key={`subsec-${section.section_number}-${sub.subsection_number}-${idx}`}
             subsection={sub}
@@ -67,6 +166,21 @@ export const SectionCard = ({ section }) => {
         ))
       ) : (
         <p className="text-gray-500 italic">No subsections available.</p>
+      )}
+
+      {section.historical_subsections?.length > 0 && (
+        <div className="mt-5 border-t border-amber-200 pt-4">
+          <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-amber-900">
+            Earlier wording from the bare Act
+          </h4>
+          {section.historical_subsections.map((subsection, idx) => (
+            <SubsectionRenderer
+              key={`historical-subsection-${subsection.subsection_number || idx}-${idx}`}
+              subsection={subsection}
+              historical
+            />
+          ))}
+        </div>
       )}
     </div>
   );
