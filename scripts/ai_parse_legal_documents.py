@@ -421,7 +421,8 @@ def amendment_source_map(parsed_amendments: list[dict]) -> dict[str, list[dict]]
                 item = source_item.group(1) or source_item.group(2)
                 citation += f", source item {item}"
             if page:
-                citation += f", PDF page {page}"
+                page_label = re.sub(r"^(?:PDF\\s+)?page\\s+", "", page, flags=re.IGNORECASE)
+                citation += f", PDF page {page_label}"
             if effective_date and effective_date.lower() not in {"not specified", "n/a"}:
                 citation += f"; effective {effective_date}"
             citation += "."
