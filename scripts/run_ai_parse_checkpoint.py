@@ -2,8 +2,8 @@
 
 This launcher keeps checkpoint parsing resilient while preserving the existing
 parser implementation. It normalizes harmless Gemini formatting variants in
-section numbers before merge/validation and makes empty structured responses
-fully retryable.
+section numbers, merges overlap duplicates globally before validation, and makes
+empty structured responses fully retryable.
 """
 
 from __future__ import annotations
@@ -37,8 +37,37 @@ def normalize_chunk_section_numbers(chunks: list[dict]) -> None:
                 )
 
 
+def merge_duplicate_sections_globally(chunks: list[dict]) -> None:
+    """Merge duplicate sections even when Gemini assigns them to different chapters.
+
+    Overlapping PDF batches occasionally repeat a section under the preceding or
+    following chapter identity. The core parser only deduplicates inside one
+    chapter, so merge those repeated section payloads before the normal chapter
+    merge. The first occurrence keeps its chapter placement while all later legal
+    text, subsections, clauses, amendment notes, and statuses are merged into it.
+    """
+    seen: dict[str, dict] = {}
+    for chunk in chunks:
+        for chapter in chunk.get("chapters", []):
+            retained = []
+            for section in chapter.get("sections", []):
+                key = normalize_section_number(section.get("section_number", "")).upper()
+                section["section_number"] = key
+                if not key:
+                    retained.append(section)
+                    continue
+                existing = seen.get(key)
+                if existing is None:
+                    seen[key] = section
+                    retained.append(section)
+                    continue
+                parser._merge_sections([existing], [section])
+            chapter["sections"] = retained
+
+
 def merge_act_chunks_normalized(chunks: list[dict], doc_type: str) -> dict:
     normalize_chunk_section_numbers(chunks)
+    merge_duplicate_sections_globally(chunks)
     return _ORIGINAL_MERGE_ACT_CHUNKS(chunks, doc_type)
 
 
@@ -48,8 +77,8 @@ def main() -> None:
     if "NO STRUCTURED OUTPUT" not in checkpoint.TRANSIENT_MARKERS:
         checkpoint.TRANSIENT_MARKERS += ("NO STRUCTURED OUTPUT",)
 
-    # Normalize section identifiers before deduplication and validation so legal
-    # sections such as 378I/378ZI are not rejected solely due to AI hyphenation.
+    # Normalize section identifiers and globally merge overlap duplicates before
+    # the core parser performs its normal chapter merge and validation.
     parser.merge_act_chunks = merge_act_chunks_normalized
     checkpoint.main()
 
