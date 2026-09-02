@@ -34,6 +34,7 @@ FRONTEND_MASTER_PATH = ROOT / "frontend" / "public" / "docs" / "sections_master.
 MODEL = os.getenv("GEMINI_PDF_MODEL", "gemini-2.5-flash-lite")
 BATCH_PAGES = int(os.getenv("GEMINI_PDF_BATCH_PAGES", "20"))
 OVERLAP_PAGES = int(os.getenv("GEMINI_PDF_OVERLAP_PAGES", "2"))
+REQUEST_DELAY_SECONDS = float(os.getenv("GEMINI_REQUEST_DELAY_SECONDS", "6"))
 
 DOCUMENTS = {
     "Companies_Act_2013_Current.pdf": "current_act",
@@ -230,6 +231,12 @@ def parse_act(client, pdf_path: Path, doc_type: str) -> dict:
                         f"section {last_section.get('section_number', '')} "
                         f"({last_section.get('title', '')})"
                     )
+            if index < len(chunks) and REQUEST_DELAY_SECONDS > 0:
+                print(
+                    f"Pacing Gemini free-tier requests for {REQUEST_DELAY_SECONDS:g}s",
+                    flush=True,
+                )
+                time.sleep(REQUEST_DELAY_SECONDS)
     return merge_act_chunks(parsed_chunks, doc_type)
 
 
