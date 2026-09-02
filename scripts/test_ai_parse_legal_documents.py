@@ -114,7 +114,7 @@ class AiLegalParserTests(unittest.TestCase):
         self.assertEqual(record["operation"], "inserted")
         self.assertIn("Companies (Amendment) Act, 2019", record["citation"])
         self.assertIn("Act 22 of 2019", record["citation"])
-        self.assertIn("PDF page page 2", record["citation"])
+        self.assertIn("PDF page 2", record["citation"])
 
 
 if __name__ == "__main__":
