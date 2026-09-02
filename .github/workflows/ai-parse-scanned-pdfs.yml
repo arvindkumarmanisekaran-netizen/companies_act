@@ -92,7 +92,7 @@ jobs:
       - name: AI-parse legal PDF
         run: |
           mkdir -p generated
-          python scripts/ai_parse_with_checkpoint.py \
+          python -m scripts.ai_parse_with_checkpoint \
             --source "${{ matrix.source }}" \
             --output "generated/${{ matrix.output }}.json" \
             --checkpoint-dir ".ai-checkpoints/${{ matrix.output }}"
