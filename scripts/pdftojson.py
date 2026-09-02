@@ -322,20 +322,101 @@ def _materially_different(first: str, second: str) -> bool:
     return SequenceMatcher(None, first_normalized, second_normalized).ratio() < 0.97
 
 
-def _source_note(section: dict, subsection: dict | None, amendment_sources: dict) -> str:
-    notes = []
-    for amendment in section.get("amendments", []):
-        if amendment.get("note"):
-            notes.append(amendment["note"])
-    if subsection:
-        for amendment in subsection.get("amendments", []):
-            if amendment.get("note"):
-                notes.append(amendment["note"])
+def _identifier_pattern(kind: str, identifier: str) -> re.Pattern:
+    value = str(identifier).strip().strip("()")
+    if kind == "clause":
+        label = r"(?:sub-?clause|clause)"
+    else:
+        label = r"(?:sub-?section|subsection)"
+    return re.compile(rf"\\b{label}\\s*\\(\\s*{re.escape(value)}\\s*\\)", re.IGNORECASE)
 
+
+def _source_records(
+    section_number: str,
+    amendment_sources: dict,
+    subsection_number: str | None = None,
+    clause_number: str | None = None,
+) -> list[dict]:
+    """Return only amendment operations that target this exact structural item."""
+    records = amendment_sources.get(str(section_number).upper(), [])
+    structured = [record for record in records if isinstance(record, dict)]
+    if clause_number:
+        pattern = _identifier_pattern("clause", clause_number)
+        return [record for record in structured if pattern.search(record.get("target", ""))]
+    if subsection_number and str(subsection_number).upper() != "N/A":
+        pattern = _identifier_pattern("subsection", subsection_number)
+        return [record for record in structured if pattern.search(record.get("target", ""))]
+
+    section = re.escape(str(section_number))
+    whole_section = re.compile(
+        rf"^(?:(?:in|after|before)\\s+)?section\\s+{section}\\s*$",
+        re.IGNORECASE,
+    )
+    return [record for record in structured if whole_section.fullmatch(record.get("target", "").strip())]
+
+
+def _local_source_notes(
+    section: dict,
+    subsection: dict | None,
+    subsection_number: str | None,
+    clause_number: str | None,
+) -> list[str]:
+    notes = []
+    candidates = list(section.get("amendments", []))
+    if subsection:
+        candidates.extend(subsection.get("amendments", []))
+
+    if clause_number:
+        pattern = _identifier_pattern("clause", clause_number)
+    elif subsection_number and str(subsection_number).upper() != "N/A":
+        pattern = _identifier_pattern("subsection", subsection_number)
+    else:
+        pattern = None
+
+    for amendment in candidates:
+        note = amendment.get("note", "")
+        if note and (pattern is None or pattern.search(note)):
+            notes.append(note)
+    return notes
+
+
+def _source_note(
+    section: dict,
+    subsection: dict | None,
+    amendment_sources: dict,
+    subsection_number: str | None = None,
+    clause_number: str | None = None,
+) -> str:
     section_number = str(section.get("section_number", "")).upper()
-    notes.extend(amendment_sources.get(section_number, []))
-    unique_notes = list(dict.fromkeys(notes))
-    return "; ".join(unique_notes) or "Amendment source was not identified in the parsed footnotes."
+    records = _source_records(
+        section_number,
+        amendment_sources,
+        subsection_number=subsection_number,
+        clause_number=clause_number,
+    )
+    notes = _local_source_notes(
+        section,
+        subsection,
+        subsection_number=subsection_number,
+        clause_number=clause_number,
+    )
+    notes.extend(record.get("citation", "") for record in records if record.get("citation"))
+    return "; ".join(dict.fromkeys(notes))
+
+
+def _change_type(records: list[dict], kind: str, identifier: str) -> str:
+    """Use omitted only when the amendment removes the entire matched item."""
+    pattern = _identifier_pattern(kind, identifier)
+    for record in records:
+        target = record.get("target", "").strip()
+        match = pattern.search(target)
+        if (
+            record.get("operation") == "omitted"
+            and match
+            and not target[match.end() :].strip(" ,;:-")
+        ):
+            return "omitted"
+    return "substituted"
 
 
 def _historical_entry(item: dict, change_type: str, source_note: str) -> dict:
@@ -347,7 +428,7 @@ def _historical_entry(item: dict, change_type: str, source_note: str) -> dict:
 
 
 def merge_bare_act_history(current_act: dict, bare_act: dict | None, amendment_sources: dict) -> dict:
-    """Keep enacted wording beside the current wording instead of silently discarding it."""
+    """Merge enacted wording only when an exact amendment citation supports the change."""
     if not bare_act:
         return current_act
 
@@ -361,10 +442,9 @@ def merge_bare_act_history(current_act: dict, bare_act: dict | None, amendment_s
         chapter_key = bare_chapter.get("chapter_number", "").strip().upper()
         current_chapter = current_chapters.get(chapter_key)
         if current_chapter is None:
-            historical_chapter = deepcopy(bare_chapter)
-            historical_chapter["historical"] = True
-            current_act.setdefault("chapters", []).append(historical_chapter)
-            current_chapters[chapter_key] = historical_chapter
+            restored_chapter = deepcopy(bare_chapter)
+            current_act.setdefault("chapters", []).append(restored_chapter)
+            current_chapters[chapter_key] = restored_chapter
             continue
 
         current_sections = {
@@ -376,10 +456,19 @@ def merge_bare_act_history(current_act: dict, bare_act: dict | None, amendment_s
             section_key = str(bare_section.get("section_number", "")).upper()
             current_section = current_sections.get(section_key)
             if current_section is None:
+                records = _source_records(section_key, amendment_sources)
                 source_note = _source_note(bare_section, None, amendment_sources)
-                omitted_section = _historical_entry(bare_section, "omitted", source_note)
-                omitted_section["status"] = "omitted"
-                current_chapter.setdefault("sections", []).append(omitted_section)
+                if source_note:
+                    change_type = _change_type(records, "section", section_key)
+                    historical_section = _historical_entry(
+                        bare_section, change_type, source_note
+                    )
+                    historical_section["status"] = change_type
+                    current_chapter.setdefault("sections", []).append(historical_section)
+                else:
+                    restored_section = deepcopy(bare_section)
+                    current_chapter.setdefault("sections", []).append(restored_section)
+                    current_sections[section_key] = restored_section
                 continue
 
             current_subsections = {
@@ -390,12 +479,34 @@ def merge_bare_act_history(current_act: dict, bare_act: dict | None, amendment_s
             for bare_subsection in bare_section.get("subsections", []):
                 subsection_key = str(bare_subsection.get("subsection_number", "N/A")).upper()
                 current_subsection = current_subsections.get(subsection_key)
-                source_note = _source_note(current_section, current_subsection, amendment_sources)
+                subsection_records = _source_records(
+                    section_key,
+                    amendment_sources,
+                    subsection_number=subsection_key,
+                )
+                subsection_note = _source_note(
+                    current_section,
+                    current_subsection,
+                    amendment_sources,
+                    subsection_number=subsection_key,
+                )
 
                 if current_subsection is None:
-                    current_section.setdefault("historical_subsections", []).append(
-                        _historical_entry(bare_subsection, "omitted", source_note)
-                    )
+                    if subsection_note:
+                        change_type = _change_type(
+                            subsection_records, "subsection", subsection_key
+                        )
+                        current_section.setdefault("historical_subsections", []).append(
+                            _historical_entry(
+                                bare_subsection, change_type, subsection_note
+                            )
+                        )
+                    else:
+                        restored_subsection = deepcopy(bare_subsection)
+                        current_section.setdefault("subsections", []).append(
+                            restored_subsection
+                        )
+                        current_subsections[subsection_key] = restored_subsection
                     continue
 
                 bare_clauses = bare_subsection.get("clauses", [])
@@ -406,22 +517,64 @@ def merge_bare_act_history(current_act: dict, bare_act: dict | None, amendment_s
                 for bare_clause in bare_clauses:
                     clause_key = str(bare_clause.get("clause_number", "")).lower()
                     current_clause = current_clauses.get(clause_key)
+                    clause_records = _source_records(
+                        section_key,
+                        amendment_sources,
+                        clause_number=clause_key,
+                    )
+                    clause_note = _source_note(
+                        current_section,
+                        current_subsection,
+                        amendment_sources,
+                        subsection_number=subsection_key,
+                        clause_number=clause_key,
+                    )
+
                     if current_clause is None:
-                        current_subsection.setdefault("historical_clauses", []).append(
-                            _historical_entry(bare_clause, "omitted", source_note)
-                        )
-                    elif _materially_different(
+                        if clause_note:
+                            change_type = _change_type(
+                                clause_records, "clause", clause_key
+                            )
+                            current_subsection.setdefault(
+                                "historical_clauses", []
+                            ).append(
+                                _historical_entry(
+                                    bare_clause, change_type, clause_note
+                                )
+                            )
+                        else:
+                            restored_clause = deepcopy(bare_clause)
+                            current_subsection.setdefault("clauses", []).append(
+                                restored_clause
+                            )
+                            current_clauses[clause_key] = restored_clause
+                    elif clause_note and _materially_different(
                         bare_clause.get("text", ""), current_clause.get("text", "")
                     ):
+                        change_type = _change_type(
+                            clause_records, "clause", clause_key
+                        )
                         current_subsection.setdefault("historical_clauses", []).append(
-                            _historical_entry(bare_clause, "substituted", source_note)
+                            _historical_entry(
+                                bare_clause, change_type, clause_note
+                            )
                         )
 
-                if not bare_clauses and _materially_different(
-                    bare_subsection.get("text", ""), current_subsection.get("text", "")
+                if (
+                    not bare_clauses
+                    and subsection_note
+                    and _materially_different(
+                        bare_subsection.get("text", ""),
+                        current_subsection.get("text", ""),
+                    )
                 ):
+                    change_type = _change_type(
+                        subsection_records, "subsection", subsection_key
+                    )
                     current_subsection.setdefault("historical_versions", []).append(
-                        _historical_entry(bare_subsection, "substituted", source_note)
+                        _historical_entry(
+                            bare_subsection, change_type, subsection_note
+                        )
                     )
 
     return current_act
