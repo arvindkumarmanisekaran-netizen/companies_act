@@ -324,6 +324,8 @@ def _materially_different(first: str, second: str) -> bool:
 
 def _identifier_pattern(kind: str, identifier: str) -> re.Pattern:
     value = str(identifier).strip().strip("()")
+    if kind == "section":
+        return re.compile(rf"\\bsection\\s+{re.escape(value)}\\b", re.IGNORECASE)
     if kind == "clause":
         label = r"(?:sub-?clause|clause)"
     else:
