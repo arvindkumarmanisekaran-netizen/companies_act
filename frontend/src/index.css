@@ -19,12 +19,6 @@ select {
   font: inherit;
 }
 
-@media (max-width: 767px) {
-  body {
-    overscroll-behavior-y: none;
-  }
-}
-
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
