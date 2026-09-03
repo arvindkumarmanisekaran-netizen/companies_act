@@ -104,7 +104,7 @@ const PdfDocumentViewer = ({ source }) => {
     const observer = new ResizeObserver(updateWidth);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [loading]);
 
   useEffect(() => {
     let cancelled = false;
