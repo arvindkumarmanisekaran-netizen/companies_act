@@ -1,4 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, LoaderCircle, Minus, Plus } from "lucide-react";
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 const AMENDMENT_PDFS = [
   {
@@ -79,6 +81,235 @@ const ChangeBadge = ({ type, onClick }) => {
   }
 
   return <span className={className}>{label}</span>;
+};
+
+const PdfDocumentViewer = ({ source }) => {
+  const canvasRef = useRef(null);
+  const containerRef = useRef(null);
+  const renderTaskRef = useRef(null);
+  const [pdfDocument, setPdfDocument] = useState(null);
+  const [pageNumber, setPageNumber] = useState(Number(source.page) || 1);
+  const [pageCount, setPageCount] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [rendering, setRendering] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return undefined;
+
+    const updateWidth = () => setContainerWidth(node.clientWidth);
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let loadingTask;
+    const pdfUrl = source.url.split("#")[0];
+
+    setLoading(true);
+    setError("");
+    setPdfDocument(null);
+    setPageCount(0);
+    setPageNumber(Number(source.page) || 1);
+    setZoom(1);
+
+    const loadPdf = async () => {
+      try {
+        const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
+        if (cancelled) return;
+
+        GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        loadingTask = getDocument(pdfUrl);
+        const document = await loadingTask.promise;
+        if (cancelled) {
+          document.destroy();
+          return;
+        }
+        const requestedPage = Number(source.page) || 1;
+        setPdfDocument(document);
+        setPageCount(document.numPages);
+        setPageNumber(Math.min(Math.max(requestedPage, 1), document.numPages));
+        setLoading(false);
+      } catch (loadError) {
+        if (cancelled) return;
+        console.error("Unable to load amendment PDF:", loadError);
+        setError("The amendment PDF could not be displayed.");
+        setLoading(false);
+      }
+    };
+
+    loadPdf();
+
+    return () => {
+      cancelled = true;
+      renderTaskRef.current?.cancel();
+      loadingTask?.destroy();
+    };
+  }, [source.file, source.page, source.url]);
+
+  useEffect(() => {
+    if (!pdfDocument || !containerWidth || !canvasRef.current) return undefined;
+
+    let cancelled = false;
+    const renderPage = async () => {
+      setRendering(true);
+      try {
+        renderTaskRef.current?.cancel();
+        const page = await pdfDocument.getPage(pageNumber);
+        if (cancelled) return;
+
+        const baseViewport = page.getViewport({ scale: 1 });
+        const availableWidth = Math.max(containerWidth - 24, 280);
+        const fitScale = availableWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale: fitScale * zoom });
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        const canvas = canvasRef.current;
+        const context = canvas.getContext("2d", { alpha: false });
+
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        const renderTask = page.render({
+          canvasContext: context,
+          viewport,
+          transform:
+            outputScale === 1
+              ? undefined
+              : [outputScale, 0, 0, outputScale, 0, 0],
+        });
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+      } catch (renderError) {
+        if (renderError?.name !== "RenderingCancelledException") {
+          console.error("Unable to render amendment PDF page:", renderError);
+          setError("This PDF page could not be rendered.");
+        }
+      } finally {
+        if (!cancelled) setRendering(false);
+      }
+    };
+
+    renderPage();
+    return () => {
+      cancelled = true;
+      renderTaskRef.current?.cancel();
+    };
+  }, [containerWidth, pageNumber, pdfDocument, zoom]);
+
+  const changePage = (nextPage) => {
+    setPageNumber(Math.min(Math.max(nextPage, 1), pageCount));
+    containerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  if (loading) {
+    return (
+      <div className="grid min-h-0 flex-1 place-items-center bg-slate-200">
+        <div className="flex items-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow">
+          <LoaderCircle className="animate-spin text-blue-700" size={20} />
+          Loading amendment PDF…
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !pdfDocument) {
+    return (
+      <div className="grid min-h-0 flex-1 place-items-center bg-slate-100 p-5 text-center">
+        <div>
+          <p className="font-bold text-slate-900">{error}</p>
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-blue-950 px-4 text-sm font-semibold text-white"
+          >
+            Open PDF separately
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-slate-200">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-300 bg-white px-2 py-2 sm:px-3">
+        <button
+          type="button"
+          onClick={() => changePage(pageNumber - 1)}
+          disabled={pageNumber <= 1}
+          className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-300 text-slate-700 disabled:opacity-35"
+          aria-label="Previous PDF page"
+        >
+          <ChevronLeft size={20} />
+        </button>
+
+        <div className="min-w-0 text-center">
+          <div className="text-sm font-bold text-slate-900">
+            Page {pageNumber} of {pageCount}
+          </div>
+          {rendering && <div className="text-xs text-slate-500">Rendering…</div>}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => changePage(pageNumber + 1)}
+          disabled={pageNumber >= pageCount}
+          className="grid size-10 shrink-0 place-items-center rounded-lg border border-slate-300 text-slate-700 disabled:opacity-35"
+          aria-label="Next PDF page"
+        >
+          <ChevronRight size={20} />
+        </button>
+
+        <div className="ml-1 flex shrink-0 items-center rounded-lg border border-slate-300 bg-slate-50">
+          <button
+            type="button"
+            onClick={() => setZoom((value) => Math.max(0.75, value - 0.25))}
+            disabled={zoom <= 0.75}
+            className="grid size-10 place-items-center text-slate-700 disabled:opacity-35"
+            aria-label="Zoom out"
+          >
+            <Minus size={18} />
+          </button>
+          <span className="min-w-11 text-center text-xs font-bold text-slate-600">
+            {Math.round(zoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => setZoom((value) => Math.min(2, value + 0.25))}
+            disabled={zoom >= 2}
+            className="grid size-10 place-items-center text-slate-700 disabled:opacity-35"
+            aria-label="Zoom in"
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="min-h-0 flex-1 touch-pan-y overflow-auto overscroll-contain p-3 [-webkit-overflow-scrolling:touch]"
+      >
+        {error && (
+          <p className="sticky left-0 top-0 z-10 mb-2 rounded bg-red-100 p-2 text-center text-xs font-semibold text-red-800">
+            {error}
+          </p>
+        )}
+        <canvas
+          ref={canvasRef}
+          className="mx-auto block max-w-none bg-white shadow-lg"
+          aria-label={`${source.label}, page ${pageNumber}`}
+        />
+      </div>
+    </div>
+  );
 };
 
 const AmendmentPdfModal = ({ sources, onClose }) => {
@@ -171,12 +402,7 @@ const AmendmentPdfModal = ({ sources, onClose }) => {
             </button>
           </header>
 
-          <iframe
-            key={activeSource.url}
-            src={activeSource.url}
-            title={activeSource.label}
-            className="min-h-0 flex-1 bg-slate-200"
-          />
+          <PdfDocumentViewer key={activeSource.url} source={activeSource} />
         </div>
       </section>
     </div>
