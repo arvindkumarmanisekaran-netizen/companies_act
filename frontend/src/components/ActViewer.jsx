@@ -149,11 +149,7 @@ const ActViewer = ({ data }) => {
   const nextEntry = sectionEntries[selectedIndex + 1];
 
   const scrollReaderToTop = () => {
-    if (window.matchMedia("(min-width: 768px)").matches) {
-      contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const goToSection = (index) => {
@@ -178,7 +174,7 @@ const ActViewer = ({ data }) => {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-3.5rem)] bg-slate-50 md:min-h-[calc(100vh-4rem)]">
+    <div className="flex h-[calc(100dvh-3.5rem)] overflow-hidden bg-slate-50 md:h-auto md:min-h-[calc(100vh-4rem)] md:overflow-visible">
       {mobileNavOpen && (
         <button
           type="button"
@@ -242,7 +238,7 @@ const ActViewer = ({ data }) => {
             </span>
           </div>
 
-          <div className="max-h-[32dvh] space-y-1 overflow-y-auto border-b border-slate-200 pb-3 md:max-h-[31vh]">
+          <div className="max-h-[32dvh] touch-pan-y space-y-1 overflow-y-auto overscroll-contain border-b border-slate-200 pb-3 [-webkit-overflow-scrolling:touch] md:max-h-[31vh]">
             <button
               type="button"
               onClick={() => chooseChapter(null)}
@@ -291,7 +287,7 @@ const ActViewer = ({ data }) => {
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
             {sectionEntries.map((entry, index) => (
               <button
                 type="button"
@@ -322,9 +318,9 @@ const ActViewer = ({ data }) => {
 
       <main
         ref={contentRef}
-        className="min-w-0 flex-1 overflow-visible px-3 pb-28 pt-0 sm:px-5 md:max-h-[calc(100vh-4rem)] md:overflow-y-auto md:p-6"
+        className="h-full min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-3 pb-28 pt-0 [-webkit-overflow-scrolling:touch] sm:px-5 md:h-auto md:max-h-[calc(100vh-4rem)] md:p-6"
       >
-        <div className="sticky top-14 z-30 -mx-3 mb-3 flex items-center justify-between border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur sm:-mx-5 sm:px-5 md:hidden">
+        <div className="sticky top-0 z-30 -mx-3 mb-3 flex items-center justify-between border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur sm:-mx-5 sm:px-5 md:hidden">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
