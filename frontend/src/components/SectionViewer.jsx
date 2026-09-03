@@ -60,7 +60,7 @@ const ChangeBadge = ({ type, onClick }) => {
     type === "substituted"
       ? "border-amber-300 bg-amber-100 text-amber-900"
       : "border-red-300 bg-red-100 text-red-900";
-  const className = `inline-flex rounded border px-2 py-0.5 text-[11px] font-bold uppercase ${colors} ${
+  const className = `inline-flex min-h-7 items-center rounded-md border px-2 py-1 text-[11px] font-bold uppercase ${colors} ${
     onClick ? "cursor-pointer transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-blue-500" : ""
   }`;
 
@@ -107,7 +107,7 @@ const AmendmentPdfModal = ({ sources, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-2 backdrop-blur-sm sm:p-3"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -118,13 +118,13 @@ const AmendmentPdfModal = ({ sources, onClose }) => {
         aria-label="Amendment PDF viewer"
         className={`flex overflow-hidden rounded-xl bg-white shadow-2xl transition-all ${
           expanded
-            ? "h-[calc(100vh-1.5rem)] w-[calc(100vw-1.5rem)]"
-            : "h-[min(70vh,600px)] w-[min(92vw,760px)]"
+            ? "h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)]"
+            : "h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] sm:h-[min(70vh,600px)] sm:w-[min(92vw,760px)]"
         }`}
       >
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex flex-wrap items-center gap-2 border-b bg-slate-50 px-3 py-2">
-            <div className="min-w-0 flex-1">
+            <div className="w-full min-w-0 flex-1 sm:w-auto">
               <h4 className="truncate text-sm font-bold text-slate-900">{activeSource.label}</h4>
               <p className="text-xs text-slate-500">
                 {activeSource.page ? `Opening PDF page ${activeSource.page}` : "Source amendment document"}
@@ -135,7 +135,7 @@ const AmendmentPdfModal = ({ sources, onClose }) => {
               <select
                 value={activeIndex}
                 onChange={(event) => setActiveIndex(Number(event.target.value))}
-                className="max-w-56 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs sm:max-w-56"
                 aria-label="Select amendment document"
               >
                 {sources.map((source, index) => (
@@ -233,7 +233,7 @@ const HistoricalEntry = ({ entry, prefix, onOpenAmendment }) => {
   const sources = amendmentPdfSources(entry.source_note);
 
   return (
-    <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm shadow-sm">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <ChangeBadge
           type={entry.change_type}
@@ -248,7 +248,7 @@ const HistoricalEntry = ({ entry, prefix, onOpenAmendment }) => {
           <span>{clause.text}</span>
         </div>
       ))}
-      <p className="mt-2 border-t border-amber-200 pt-2 text-xs text-amber-900">
+      <p className="mt-2 break-words border-t border-amber-200 pt-2 text-xs leading-relaxed text-amber-900">
         <strong>Amendment note:</strong> {entry.source_note}
       </p>
       {sources.length > 0 && (
@@ -278,7 +278,7 @@ export const SubsectionRenderer = ({ subsection, historical = false, onOpenAmend
 
   return (
     <div
-      className={`mb-4 border-l-2 pl-4 ${
+      className={`mb-3 border-l-2 pl-3 sm:mb-4 sm:pl-4 ${
         historical ? "border-amber-400 bg-amber-50/40 py-3 pr-3" : "border-gray-200"
       }`}
     >
@@ -296,11 +296,15 @@ export const SubsectionRenderer = ({ subsection, historical = false, onOpenAmend
         {subsection.subsection_number && subsection.subsection_number !== "N/A" && (
           <span className="font-bold text-gray-700">{subsection.subsection_number}</span>
         )}
-        {subsection.text && <p className="leading-relaxed text-gray-900">{subsection.text}</p>}
+        {subsection.text && (
+          <p className="text-[15px] leading-7 text-gray-900 sm:text-base">
+            {subsection.text}
+          </p>
+        )}
       </div>
 
       {subsection.amendments?.length > 0 && (
-        <div className="ml-6 mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
+        <div className="ml-1 mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs leading-relaxed text-amber-700 sm:ml-6">
           {subsection.amendments.map((amendment, index) => (
             <div key={`amend-${amendment.footnote_ref || index}-${index}`}>
               <strong>[{amendment.footnote_ref}]</strong> {amendment.note}
@@ -319,15 +323,15 @@ export const SubsectionRenderer = ({ subsection, historical = false, onOpenAmend
       ))}
 
       {clauseGroups.length > 0 && (
-        <div className="ml-6 mt-2 space-y-3">
+        <div className="ml-1 mt-3 space-y-3 sm:ml-6">
           {clauseGroups.map((group, groupIndex) => (
             <div key={`clause-group-${normalizeIdentifier(group.identifier)}-${groupIndex}`}>
               {group.current.map((clause, index) => (
                 <div
                   key={`clause-${clause.clause_number || index}-${index}`}
-                  className="flex items-start gap-2 text-sm text-gray-800"
+                  className="flex items-start gap-2 text-[15px] leading-7 text-gray-800 sm:text-base"
                 >
-                  <span className="min-w-[30px] font-semibold text-blue-600">
+                  <span className="min-w-8 shrink-0 font-semibold text-blue-700">
                     {clause.clause_number}
                   </span>
                   <span>{clause.text}</span>
@@ -403,12 +407,12 @@ export const SectionCard = ({ section }) => {
   return (
     <>
       <article
-        className={`mb-6 rounded-lg border p-6 shadow-md ${
+        className={`mb-4 rounded-xl border p-4 shadow-sm sm:mb-6 sm:p-6 sm:shadow-md ${
           section.historical ? "border-red-200 bg-red-50/40" : "border-gray-200 bg-white"
         }`}
       >
         <div className="mb-3 flex flex-wrap items-center gap-3">
-          <h3 className="text-lg font-bold text-gray-900">
+          <h3 className="text-base font-extrabold leading-snug text-gray-900 sm:text-lg">
             Section {section.section_number}: {displayTitle}
           </h3>
           {section.historical && (
@@ -422,7 +426,7 @@ export const SectionCard = ({ section }) => {
         </div>
 
         {section.historical && section.source_note && (
-          <p className="mb-4 rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          <p className="mb-4 break-words rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs leading-relaxed text-red-800">
             <strong>Amendment note:</strong> {section.source_note}
           </p>
         )}
