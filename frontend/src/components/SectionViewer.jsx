@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, LoaderCircle, Minus, Plus } from "lucide-react";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 const AMENDMENT_PDFS = [
   {
@@ -111,6 +111,7 @@ const PdfDocumentViewer = ({ source }) => {
     let cancelled = false;
     let loadingTask;
     const pdfUrl = source.url.split("#")[0];
+    const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 
     setLoading(true);
     setError("");
@@ -121,11 +122,16 @@ const PdfDocumentViewer = ({ source }) => {
 
     const loadPdf = async () => {
       try {
-        const { getDocument, GlobalWorkerOptions } = await import("pdfjs-dist");
+        const { getDocument, GlobalWorkerOptions } = await import(
+          "pdfjs-dist/legacy/build/pdf.mjs"
+        );
         if (cancelled) return;
 
         GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-        loadingTask = getDocument(pdfUrl);
+        loadingTask = getDocument({
+          url: pdfUrl,
+          standardFontDataUrl: `${baseUrl}/pdfjs/standard_fonts/`,
+        });
         const document = await loadingTask.promise;
         if (cancelled) {
           document.destroy();
