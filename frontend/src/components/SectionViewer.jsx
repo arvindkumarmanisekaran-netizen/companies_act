@@ -1,11 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, LoaderCircle, Minus, Plus } from "lucide-react";
 
-const pdfWorkerUrl = new URL(
-  "../vendor/pdfjs/pdf.worker.min.mjs",
-  import.meta.url,
-).href;
-
 const AMENDMENT_PDFS = [
   {
     year: "2015",
@@ -126,12 +121,19 @@ const PdfDocumentViewer = ({ source }) => {
 
     const loadPdf = async () => {
       try {
-        const { getDocument, GlobalWorkerOptions } = await import(
-          "../vendor/pdfjs/pdf.mjs"
-        );
+        const [{ getDocument }, { WorkerMessageHandler }] = await Promise.all([
+          import("../vendor/pdfjs/pdf.mjs"),
+          import("../vendor/pdfjs/pdf.worker.min.mjs"),
+        ]);
         if (cancelled) return;
 
-        GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        // Run PDF.js through its built-in main-thread worker handler. This avoids
+        // module-worker and .mjs MIME restrictions in older mobile browsers and
+        // in static hosting environments while retaining PDF.js rendering.
+        globalThis.pdfjsWorker = {
+          ...globalThis.pdfjsWorker,
+          WorkerMessageHandler,
+        };
         loadingTask = getDocument({
           url: pdfUrl,
           standardFontDataUrl: `${baseUrl}/pdfjs/standard_fonts/`,
@@ -149,7 +151,11 @@ const PdfDocumentViewer = ({ source }) => {
       } catch (loadError) {
         if (cancelled) return;
         console.error("Unable to load amendment PDF:", loadError);
-        setError("The amendment PDF could not be displayed.");
+        setError(
+          `The amendment PDF could not be displayed${
+            loadError?.message ? `: ${loadError.message}` : "."
+          }`,
+        );
         setLoading(false);
       }
     };
