@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, LoaderCircle, Minus, Plus } from "lucide-react";
-import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
 const AMENDMENT_PDFS = [
   {
@@ -122,12 +121,13 @@ const PdfDocumentViewer = ({ source }) => {
 
     const loadPdf = async () => {
       try {
+        const pdfModuleUrl = `${baseUrl}/pdfjs/pdf.mjs`;
         const { getDocument, GlobalWorkerOptions } = await import(
-          "pdfjs-dist/legacy/build/pdf.mjs"
+          /* @vite-ignore */ pdfModuleUrl
         );
         if (cancelled) return;
 
-        GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        GlobalWorkerOptions.workerSrc = `${baseUrl}/pdfjs/pdf.worker.min.mjs`;
         loadingTask = getDocument({
           url: pdfUrl,
           standardFontDataUrl: `${baseUrl}/pdfjs/standard_fonts/`,

@@ -23,6 +23,10 @@ Generated JSON may contain transcriptions of statutory or third-party source mat
 
 Only project-created annotations, labels, selection or arrangement are covered by `CONTENT-LICENSE.md`, and only to the extent that protectable rights exist and are held by the project owner.
 
+## Embedded PDF viewer
+
+The files under `frontend/public/pdfjs/` include Mozilla PDF.js 4.10.38, licensed under the Apache License 2.0. The bundled standard fonts retain the Foxit and Liberation license notices included in `frontend/public/pdfjs/standard_fonts/`.
+
 ## Software dependencies
 
 Third-party dependencies retain their own licenses. Consult:
