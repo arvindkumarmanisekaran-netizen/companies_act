@@ -4,6 +4,21 @@ import { SectionCard } from "./SectionViewer";
 const sectionKey = (chapter, section, index) =>
   `${chapter.chapter_number || "chapter"}::${section.section_number || index}::${index}`;
 
+const sectionDisplayTitle = (section) => {
+  const sectionNumber = String(section?.section_number || "");
+  const escapedSectionNumber = sectionNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  return String(section?.title || "")
+    .replace(
+      new RegExp(
+        `^(?:section\\s+)?${escapedSectionNumber}[.：:–—-]?\\s*`,
+        "i",
+      ),
+      "",
+    )
+    .trim();
+};
+
 const searchableSectionText = (chapter, section) => {
   const parts = [chapter.chapter_number, chapter.chapter_title, section.section_number, section.title];
 
@@ -181,8 +196,9 @@ const ActViewer = ({ data }) => {
                 <h2 className="text-xl font-bold text-gray-800">
                   {selectedEntry.chapter.chapter_title}
                 </h2>
-                <p className="mt-1 text-xs text-gray-500">
-                  Section {selectedIndex + 1} of {sectionEntries.length} in this view
+                <p className="mt-1 text-sm font-medium text-gray-600">
+                  Section {selectedEntry.section.section_number}:{" "}
+                  {sectionDisplayTitle(selectedEntry.section)}
                 </p>
               </div>
               <div className="flex gap-2">
