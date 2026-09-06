@@ -1,12 +1,9 @@
 import json
 import re
 import shutil
+from copy import deepcopy
+from difflib import SequenceMatcher
 from pathlib import Path
-from pdf2image import convert_from_path
-import pdfplumber
-import pytesseract
-import pytest
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 DOCS_DIR = SCRIPT_DIR.parent / "docs"
 
@@ -45,6 +42,11 @@ def sanitize_text(text: str) -> str:
 
 
 def extract_raw_text(pdf_path: Path) -> str:
+    # Keep parser-only tests usable without installing the optional OCR stack.
+    import pdfplumber
+    import pytesseract
+    from pdf2image import convert_from_path
+
     raw_pages = []
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages):
@@ -174,6 +176,9 @@ def parse_sections_robust(chap_content: str, footnotes: dict) -> list:
     for i in range(1, len(chunks), 2):
         sec_num = chunks[i].strip()
         full_body = chunks[i + 1].strip() if (i + 1) < len(chunks) else ""
+        # The zero-width split keeps the section marker at the beginning of the
+        # body. Remove it before deriving the title ("23. Title" -> "Title").
+        full_body = re.sub(rf"^{re.escape(sec_num)}\.\s*", "", full_body, count=1)
 
         lines = full_body.split("\n", 1)
         title_candidate = lines[0].strip()
@@ -214,6 +219,7 @@ def parse_sections_robust(chap_content: str, footnotes: dict) -> list:
                     else "active"
                 ),
                 "subsections": parsed_subsecs,
+                "amendments": map_amendments(sec_body, footnotes),
             }
         )
 
@@ -256,7 +262,324 @@ def parse_act_to_json(raw_text: str, doc_type: str) -> dict:
             }
         )
 
+    doc_structure["chapters"] = deduplicate_chapters(doc_structure["chapters"])
     return doc_structure
+
+
+def _content_score(chapter: dict) -> int:
+    """Prefer the full Act chapter over its shorter table-of-contents copy."""
+    return sum(
+        len(section.get("title", ""))
+        + sum(
+            len(subsection.get("text", ""))
+            + sum(len(clause.get("text", "")) for clause in subsection.get("clauses", []))
+            for subsection in section.get("subsections", [])
+        )
+        for section in chapter.get("sections", [])
+    )
+
+
+def deduplicate_chapters(chapters: list) -> list:
+    """Remove duplicate chapter headings produced by parsing the PDF table of contents."""
+    order = []
+    best_by_number = {}
+
+    for chapter in chapters:
+        chapter_number = chapter.get("chapter_number", "").strip().upper()
+        if chapter_number not in best_by_number:
+            order.append(chapter_number)
+            best_by_number[chapter_number] = chapter
+        elif _content_score(chapter) > _content_score(best_by_number[chapter_number]):
+            best_by_number[chapter_number] = chapter
+
+    return [best_by_number[number] for number in order]
+
+
+def extract_amendment_section_references(raw_text: str, source_document: str) -> dict:
+    """Map principal-Act section numbers mentioned by an amendment to its source document."""
+    references = {}
+    pattern = re.compile(
+        r"(?:(?:in|after|before)\s+)?sections?\s+(\d+[A-Z]?)\s+of\s+"
+        r"(?:the\s+principal\s+Act|the\s+Companies\s+Act,?\s*2013)",
+        re.IGNORECASE,
+    )
+    for section_number in pattern.findall(raw_text):
+        references.setdefault(section_number.upper(), []).append(source_document)
+    return references
+
+
+def _normalized_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+
+
+def _materially_different(first: str, second: str) -> bool:
+    first_normalized = _normalized_text(first)
+    second_normalized = _normalized_text(second)
+    if first_normalized == second_normalized:
+        return False
+    if not first_normalized or not second_normalized:
+        return first_normalized != second_normalized
+    return SequenceMatcher(None, first_normalized, second_normalized).ratio() < 0.97
+
+
+def _identifier_pattern(kind: str, identifier: str) -> re.Pattern:
+    value = str(identifier).strip().strip("()")
+    if kind == "section":
+        return re.compile(rf"\bsection\s+{re.escape(value)}\b", re.IGNORECASE)
+    if kind == "clause":
+        label = r"(?:sub-?clause|clause)"
+    else:
+        label = r"(?:sub-?section|subsection)"
+    return re.compile(rf"\b{label}\s*\(\s*{re.escape(value)}\s*\)", re.IGNORECASE)
+
+
+def _source_records(
+    section_number: str,
+    amendment_sources: dict,
+    subsection_number: str | None = None,
+    clause_number: str | None = None,
+) -> list[dict]:
+    """Return only amendment operations that target this exact structural item."""
+    records = amendment_sources.get(str(section_number).upper(), [])
+    structured = [record for record in records if isinstance(record, dict)]
+    if clause_number:
+        pattern = _identifier_pattern("clause", clause_number)
+        return [record for record in structured if pattern.search(record.get("target", ""))]
+    if subsection_number and str(subsection_number).upper() != "N/A":
+        pattern = _identifier_pattern("subsection", subsection_number)
+        return [record for record in structured if pattern.search(record.get("target", ""))]
+
+    section = re.escape(str(section_number))
+    whole_section = re.compile(
+        rf"^(?:(?:in|after|before)\s+)?section\s+{section}\s*$",
+        re.IGNORECASE,
+    )
+    return [record for record in structured if whole_section.fullmatch(record.get("target", "").strip())]
+
+
+def _local_source_notes(
+    section: dict,
+    subsection: dict | None,
+    subsection_number: str | None,
+    clause_number: str | None,
+) -> list[str]:
+    notes = []
+    candidates = list(section.get("amendments", []))
+    if subsection:
+        candidates.extend(subsection.get("amendments", []))
+
+    if clause_number:
+        pattern = _identifier_pattern("clause", clause_number)
+    elif subsection_number and str(subsection_number).upper() != "N/A":
+        pattern = _identifier_pattern("subsection", subsection_number)
+    else:
+        pattern = None
+
+    for amendment in candidates:
+        note = amendment.get("note", "")
+        if note and (pattern is None or pattern.search(note)):
+            notes.append(note)
+    return notes
+
+
+def _source_note(
+    section: dict,
+    subsection: dict | None,
+    amendment_sources: dict,
+    subsection_number: str | None = None,
+    clause_number: str | None = None,
+) -> str:
+    section_number = str(section.get("section_number", "")).upper()
+    records = _source_records(
+        section_number,
+        amendment_sources,
+        subsection_number=subsection_number,
+        clause_number=clause_number,
+    )
+    notes = _local_source_notes(
+        section,
+        subsection,
+        subsection_number=subsection_number,
+        clause_number=clause_number,
+    )
+    notes.extend(record.get("citation", "") for record in records if record.get("citation"))
+    return "; ".join(dict.fromkeys(notes))
+
+
+def _change_type(records: list[dict], kind: str, identifier: str) -> str:
+    """Use omitted only when the amendment removes the entire matched item."""
+    pattern = _identifier_pattern(kind, identifier)
+    for record in records:
+        target = record.get("target", "").strip()
+        match = pattern.search(target)
+        if (
+            record.get("operation") == "omitted"
+            and match
+            and not target[match.end() :].strip(" ,;:-")
+        ):
+            return "omitted"
+    return "substituted"
+
+
+def _historical_entry(item: dict, change_type: str, source_note: str) -> dict:
+    historical = deepcopy(item)
+    historical["change_type"] = change_type
+    historical["source_note"] = source_note
+    historical["historical"] = True
+    return historical
+
+
+def merge_bare_act_history(current_act: dict, bare_act: dict | None, amendment_sources: dict) -> dict:
+    """Merge enacted wording only when an exact amendment citation supports the change."""
+    if not bare_act:
+        return current_act
+
+    current_act = deepcopy(current_act)
+    current_chapters = {
+        chapter.get("chapter_number", "").strip().upper(): chapter
+        for chapter in current_act.get("chapters", [])
+    }
+
+    for bare_chapter in bare_act.get("chapters", []):
+        chapter_key = bare_chapter.get("chapter_number", "").strip().upper()
+        current_chapter = current_chapters.get(chapter_key)
+        if current_chapter is None:
+            restored_chapter = deepcopy(bare_chapter)
+            current_act.setdefault("chapters", []).append(restored_chapter)
+            current_chapters[chapter_key] = restored_chapter
+            continue
+
+        current_sections = {
+            str(section.get("section_number", "")).upper(): section
+            for section in current_chapter.get("sections", [])
+        }
+
+        for bare_section in bare_chapter.get("sections", []):
+            section_key = str(bare_section.get("section_number", "")).upper()
+            current_section = current_sections.get(section_key)
+            if current_section is None:
+                records = _source_records(section_key, amendment_sources)
+                source_note = _source_note(bare_section, None, amendment_sources)
+                if source_note:
+                    change_type = _change_type(records, "section", section_key)
+                    historical_section = _historical_entry(
+                        bare_section, change_type, source_note
+                    )
+                    historical_section["status"] = change_type
+                    current_chapter.setdefault("sections", []).append(historical_section)
+                else:
+                    restored_section = deepcopy(bare_section)
+                    current_chapter.setdefault("sections", []).append(restored_section)
+                    current_sections[section_key] = restored_section
+                continue
+
+            current_subsections = {
+                str(subsection.get("subsection_number", "N/A")).upper(): subsection
+                for subsection in current_section.get("subsections", [])
+            }
+
+            for bare_subsection in bare_section.get("subsections", []):
+                subsection_key = str(bare_subsection.get("subsection_number", "N/A")).upper()
+                current_subsection = current_subsections.get(subsection_key)
+                subsection_records = _source_records(
+                    section_key,
+                    amendment_sources,
+                    subsection_number=subsection_key,
+                )
+                subsection_note = _source_note(
+                    current_section,
+                    current_subsection,
+                    amendment_sources,
+                    subsection_number=subsection_key,
+                )
+
+                if current_subsection is None:
+                    if subsection_note:
+                        change_type = _change_type(
+                            subsection_records, "subsection", subsection_key
+                        )
+                        current_section.setdefault("historical_subsections", []).append(
+                            _historical_entry(
+                                bare_subsection, change_type, subsection_note
+                            )
+                        )
+                    else:
+                        restored_subsection = deepcopy(bare_subsection)
+                        current_section.setdefault("subsections", []).append(
+                            restored_subsection
+                        )
+                        current_subsections[subsection_key] = restored_subsection
+                    continue
+
+                bare_clauses = bare_subsection.get("clauses", [])
+                current_clauses = {
+                    str(clause.get("clause_number", "")).lower(): clause
+                    for clause in current_subsection.get("clauses", [])
+                }
+                for bare_clause in bare_clauses:
+                    clause_key = str(bare_clause.get("clause_number", "")).lower()
+                    current_clause = current_clauses.get(clause_key)
+                    clause_records = _source_records(
+                        section_key,
+                        amendment_sources,
+                        clause_number=clause_key,
+                    )
+                    clause_note = _source_note(
+                        current_section,
+                        current_subsection,
+                        amendment_sources,
+                        subsection_number=subsection_key,
+                        clause_number=clause_key,
+                    )
+
+                    if current_clause is None:
+                        if clause_note:
+                            change_type = _change_type(
+                                clause_records, "clause", clause_key
+                            )
+                            current_subsection.setdefault(
+                                "historical_clauses", []
+                            ).append(
+                                _historical_entry(
+                                    bare_clause, change_type, clause_note
+                                )
+                            )
+                        else:
+                            restored_clause = deepcopy(bare_clause)
+                            current_subsection.setdefault("clauses", []).append(
+                                restored_clause
+                            )
+                            current_clauses[clause_key] = restored_clause
+                    elif clause_note and _materially_different(
+                        bare_clause.get("text", ""), current_clause.get("text", "")
+                    ):
+                        change_type = _change_type(
+                            clause_records, "clause", clause_key
+                        )
+                        current_subsection.setdefault("historical_clauses", []).append(
+                            _historical_entry(
+                                bare_clause, change_type, clause_note
+                            )
+                        )
+
+                if (
+                    not bare_clauses
+                    and subsection_note
+                    and _materially_different(
+                        bare_subsection.get("text", ""),
+                        current_subsection.get("text", ""),
+                    )
+                ):
+                    change_type = _change_type(
+                        subsection_records, "subsection", subsection_key
+                    )
+                    current_subsection.setdefault("historical_versions", []).append(
+                        _historical_entry(
+                            bare_subsection, change_type, subsection_note
+                        )
+                    )
+
+    return current_act
 
 
 def classify_document(pdf_path: Path) -> str:
@@ -278,31 +601,37 @@ def process_docs_pipeline():
         print(f"Directory not found: {DOCS_DIR}")
         return
 
-    pdf_files = list(DOCS_DIR.glob("*.pdf"))
+    pdf_files = sorted(DOCS_DIR.rglob("*.pdf"))
     if not pdf_files:
         print(f"No PDFs found in {DOCS_DIR}")
         return
 
-    parsed_docs = {"current_act": None, "bare_act": None, "amendments": []}
+    parsed_docs = {"current_act": None, "bare_act": None}
+    amendment_sources = {}
 
     for pdf_path in pdf_files:
         doc_type = classify_document(pdf_path)
         print(f"Processing ({doc_type}): {pdf_path.name}...")
 
         raw_text = extract_raw_text(pdf_path)
-        parsed_structure = parse_act_to_json(raw_text, doc_type)
-
         if doc_type == "current_act":
-            parsed_docs["current_act"] = parsed_structure
+            parsed_docs["current_act"] = parse_act_to_json(raw_text, doc_type)
         elif doc_type == "bare_act":
-            parsed_docs["bare_act"] = parsed_structure
+            parsed_docs["bare_act"] = parse_act_to_json(raw_text, doc_type)
         elif doc_type == "amendment":
-            parsed_docs["amendments"].append(parsed_structure)
+            references = extract_amendment_section_references(
+                raw_text, pdf_path.stem.replace("_", " ")
+            )
+            for section_number, sources in references.items():
+                amendment_sources.setdefault(section_number, []).extend(sources)
 
     if parsed_docs["current_act"]:
+        master_document = merge_bare_act_history(
+            parsed_docs["current_act"], parsed_docs["bare_act"], amendment_sources
+        )
         output_path = DOCS_DIR / "sections_master.json"
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(parsed_docs["current_act"], f, indent=2, ensure_ascii=False)
+            json.dump(master_document, f, indent=2, ensure_ascii=False)
 
         print(f"\nMaster compiled JSON saved to: {output_path.name}")
 
@@ -319,129 +648,3 @@ def process_docs_pipeline():
 
 if __name__ == "__main__":
     process_docs_pipeline()
-
-
-# ==========================================
-# JSON STRUCTURE & COMPLETENESS TESTS
-# ==========================================
-
-
-@pytest.fixture
-def parsed_sample_doc():
-    """Fixture providing parsed JSON structure from multi-section legal text."""
-    sample_raw_text = """
-CHAPTER VII
-MANAGEMENT AND ADMINISTRATION
-120. Maintenance and inspection of documents in electronic form.—Without prejudice to any other
-provisions of this Act, any document, record, register, minutes, etc.,—
-(a) required to be kept by a company; or
-(b) allowed to be inspected or copies to be given to any person by a company under this Act.
-
-121. Report on annual general meeting.—(1) Every listed public company shall prepare in the 
-prescribed manner.  
-(2) The company shall file with the Registrar a copy of the report 1***.
-2[(3) If the company fails to file the report under sub-section (2)...]
-
-122. Applicability of this Chapter to One Person Company.—(1) The provisions of section 98 shall 
-not apply.
-(2) The ordinary businesses as mentioned under clause (a) of sub-section (2)...
-(3) For the purposes of section 114, any business...
-(4) Notwithstanding anything in this Act...
-
-CHAPTER VIII
-DECLARATION AND PAYMENT OF DIVIDEND
-123. Declaration of dividend.—(1) No dividend shall be declared or paid by a company except—
-(a) out of the profits of the company; or
-(b) out of the profits of previous financial years.
-
-1. The words omitted by Act 1 of 2018, s. 31 (w.e.f. 7-5-2018).
-2. Subs. by Act 22 of 2019, s. 19 (w.e.f. 2-11-2018).
-"""
-    return parse_act_to_json(sample_raw_text, "current_act")
-
-
-def test_presence_of_all_expected_sections(parsed_sample_doc):
-    """Test that all expected sections (120, 121, 122, 123) are present in sequence."""
-    extracted_sections = []
-    for chapter in parsed_sample_doc.get("chapters", []):
-        for sec in chapter.get("sections", []):
-            extracted_sections.append(sec.get("section_number"))
-
-    expected_sections = ["120", "121", "122", "123"]
-    assert (
-        extracted_sections == expected_sections
-    ), f"Missing or out-of-order sections. Expected {expected_sections}, got {extracted_sections}"
-
-
-def test_presence_of_subsections_in_every_section(parsed_sample_doc):
-    """Test that every extracted section contains a non-empty list of subsections."""
-    for chapter in parsed_sample_doc.get("chapters", []):
-        for sec in chapter.get("sections", []):
-            sec_num = sec.get("section_number")
-            subsections = sec.get("subsections", [])
-
-            assert isinstance(
-                subsections, list
-            ), f"Section {sec_num} subsections field is not a list"
-            assert len(subsections) > 0, f"Section {sec_num} has no subsections"
-
-
-def test_section_121_all_subsections_present(parsed_sample_doc):
-    """Test that Section 121 contains all 3 numerical subsections [(1), (2), (3)]."""
-    sec_121 = None
-    for chapter in parsed_sample_doc.get("chapters", []):
-        for sec in chapter.get("sections", []):
-            if sec.get("section_number") == "121":
-                sec_121 = sec
-                break
-
-    assert sec_121 is not None, "Section 121 not found in JSON output"
-
-    subsec_numbers = [sub["subsection_number"] for sub in sec_121["subsections"]]
-    assert subsec_numbers == [
-        "(1)",
-        "(2)",
-        "(3)",
-    ], f"Section 121 subsection hierarchy mismatch. Expected ['(1)', '(2)', '(3)'], got {subsec_numbers}"  # noqa: E501
-
-
-def test_section_122_all_subsections_present(parsed_sample_doc):
-    """Test that Section 122 contains all 4 numerical subsections [(1), (2), (3), (4)]."""
-    sec_122 = None
-    for chapter in parsed_sample_doc.get("chapters", []):
-        for sec in chapter.get("sections", []):
-            if sec.get("section_number") == "122":
-                sec_122 = sec
-                break
-
-    assert sec_122 is not None, "Section 122 not found in JSON output"
-
-    subsec_numbers = [sub["subsection_number"] for sub in sec_122["subsections"]]
-    assert subsec_numbers == [
-        "(1)",
-        "(2)",
-        "(3)",
-        "(4)",
-    ], f"Section 122 subsection hierarchy mismatch. Expected ['(1)', '(2)', '(3)', '(4)'], got {subsec_numbers}"  # noqa: E501
-
-
-def test_json_schema_field_integrity(parsed_sample_doc):
-    """Test that all section and subsection objects contain required structural schema keys."""
-    required_sec_keys = {"section_number", "title", "status", "subsections"}
-    required_sub_keys = {
-        "subsection_number",
-        "text",
-        "status",
-        "clauses",
-        "amendments",
-    }
-
-    for chapter in parsed_sample_doc.get("chapters", []):
-        for sec in chapter.get("sections", []):
-            assert required_sec_keys.issubset(
-                sec.keys()
-            ), f"Section {sec.get('section_number')} missing keys: {required_sec_keys - sec.keys()}"
-            for sub in sec["subsections"]:
-                assert required_sub_keys.issubset(
-                    sub.keys()
-                ), f"Subsection {sub.get('subsection_number')} in Sec {sec.get('section_number')} missing keys: {required_sub_keys - sub.keys()}"  # noqa: E501

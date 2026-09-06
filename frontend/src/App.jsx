@@ -100,14 +100,14 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-slate-50">
       {/* Navigation Header */}
-      <header className="h-16 bg-blue-900 text-white px-6 flex items-center justify-between shadow-md">
-        <h1 className="text-lg font-bold tracking-wide">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 bg-blue-950 px-4 text-white shadow-md sm:h-16 sm:px-6">
+        <h1 className="min-w-0 truncate text-sm font-bold tracking-wide sm:text-lg">
           {actData?.act_title || "THE COMPANIES ACT, 2013"}
         </h1>
-        <div className="flex items-center gap-3">
-          <span className="text-xs bg-blue-800 px-2.5 py-1 rounded border border-blue-700 font-mono">
+        <div className="hidden shrink-0 items-center gap-3 sm:flex">
+          <span className="rounded border border-blue-700 bg-blue-900 px-2.5 py-1 font-mono text-xs">
             {actData?.doc_type ? actData.doc_type.toUpperCase() : "MASTER OUTPUT"}
           </span>
         </div>
