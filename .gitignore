@@ -53,6 +53,12 @@ frontend/coverage/
 docs/sections_master.json
 frontend/public/docs/sections_master.json
 
+# Downloaded eGazette source PDFs and browser diagnostics
+scripts/egazette_mca_pdfs/*.pdf
+scripts/egazette_mca_pdfs/*.png
+scripts/egazette_mca_pdfs/*.html
+scripts/egazette_mca_pdfs/*_links.txt
+
 # Accidentally generated binary files
 frontend/pdfplumber
 frontend/pytesseract
