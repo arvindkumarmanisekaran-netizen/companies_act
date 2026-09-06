@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import asyncio
 import csv
 import re
@@ -17,44 +15,134 @@ FROM_DATE = "01-Jan-2013"
 TO_DATE = datetime.now().strftime("%d-%b-%Y")
 
 
-def sanitize_filename(name: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*]', "_", name)
-    name = re.sub(r"\s+", " ", name).strip()
-    return name[:180] or "document.pdf"
-
-
-def filename_from_url(url: str, fallback: str) -> str:
-    path = urlparse(url).path
-    name = Path(path).name
-
-    if not name or "." not in name:
-        name = fallback
-
-    if not name.lower().endswith(".pdf"):
-        name += ".pdf"
-
-    return sanitize_filename(name)
-
-
-async def click_text(page, text):
+async def debug_page(page, name):
     """
-    Try multiple ways of clicking visible text.
+    Save screenshot + HTML + list of links/inputs/buttons.
+    This is extremely useful for old government websites.
     """
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+
+    screenshot = DOWNLOAD_DIR / f"{safe}.png"
+    html_file = DOWNLOAD_DIR / f"{safe}.html"
+    links_file = DOWNLOAD_DIR / f"{safe}_links.txt"
+
+    try:
+        await page.screenshot(path=str(screenshot), full_page=True)
+    except Exception as e:
+        print("Could not save screenshot:", e)
+
+    try:
+        html = await page.content()
+        html_file.write_text(html, encoding="utf-8")
+    except Exception as e:
+        print("Could not save HTML:", e)
+
+    try:
+        rows = []
+
+        links = page.locator("a")
+        count = await links.count()
+
+        for i in range(count):
+            link = links.nth(i)
+
+            try:
+                text = (await link.inner_text()).strip()
+            except Exception:
+                text = ""
+
+            href = await link.get_attribute("href")
+            onclick = await link.get_attribute("onclick")
+            target = await link.get_attribute("target")
+
+            rows.append(f"""
+LINK #{i}
+TEXT    : {text!r}
+HREF    : {href!r}
+ONCLICK : {onclick!r}
+TARGET  : {target!r}
+-------------------------------
+""")
+
+        links_file.write_text("\n".join(rows), encoding="utf-8")
+
+    except Exception as e:
+        print("Could not dump links:", e)
+
+    print(f"Debug files saved for '{name}'")
+
+
+async def wait_for_page_stable(page, timeout=15000):
+    """
+    Old sites often never reach networkidle cleanly.
+    Try several increasingly relaxed waits.
+    """
+    try:
+        await page.wait_for_load_state("domcontentloaded", timeout=timeout)
+    except Exception:
+        pass
+
+    try:
+        await page.wait_for_load_state("load", timeout=5000)
+    except Exception:
+        pass
+
+    await page.wait_for_timeout(1000)
+
+
+async def click_exact_visible_text(page, text):
+    """
+    Click exact text across links/buttons/elements.
+    """
+    pattern = re.compile(rf"^\s*{re.escape(text)}\s*$", re.I)
 
     candidates = [
-        page.get_by_role("link", name=re.compile(re.escape(text), re.I)),
-        page.get_by_role("button", name=re.compile(re.escape(text), re.I)),
-        page.get_by_text(text, exact=True),
-        page.get_by_text(re.compile(rf"^\s*{re.escape(text)}\s*$", re.I)),
+        page.get_by_role("link", name=pattern),
+        page.get_by_role("button", name=pattern),
+        page.get_by_text(pattern),
+        page.locator("a", has_text=pattern),
+        page.locator("button", has_text=pattern),
+        page.locator('input[type="button"]'),
+        page.locator('input[type="submit"]'),
     ]
 
     for locator in candidates:
         try:
-            if await locator.count():
-                await locator.first.click()
-                return True
+            count = await locator.count()
+
+            for i in range(count):
+                el = locator.nth(i)
+
+                if not await el.is_visible():
+                    continue
+
+                tag = await el.evaluate("(e) => e.tagName.toLowerCase()")
+
+                if tag == "input":
+                    value = (await el.get_attribute("value") or "").strip()
+
+                    if not pattern.match(value):
+                        continue
+
+                try:
+                    await el.scroll_into_view_if_needed()
+                except Exception:
+                    pass
+
+                try:
+                    await el.click(timeout=5000)
+                    return True
+                except Exception:
+                    try:
+                        await el.click(timeout=5000, force=True)
+                        return True
+                    except Exception:
+                        continue
+
         except Exception:
-            pass
+            continue
 
     return False
 
@@ -62,40 +150,77 @@ async def click_text(page, text):
 async def click_search(page):
     print("Opening Search...")
 
-    if await click_text(page, "Search"):
-        await page.wait_for_load_state("domcontentloaded")
-        return
+    await wait_for_page_stable(page)
 
-    # fallback for image/input based navigation
-    possible = page.locator(
-        'a:has-text("Search"), ' 'input[value*="Search" i], ' 'button:has-text("Search")'
-    )
+    for attempt in range(1, 4):
+        print(f"  Search attempt {attempt}/3")
 
-    if await possible.count():
-        await possible.first.click()
-        await page.wait_for_load_state("domcontentloaded")
-        return
+        found = await click_exact_visible_text(page, "Search")
 
-    raise RuntimeError("Could not find the Search control.")
+        if found:
+            await wait_for_page_stable(page)
+
+            # Give old JS/postback time to replace page
+            await page.wait_for_timeout(1000)
+
+            return
+
+        await page.wait_for_timeout(1500)
+
+    await debug_page(page, "search_not_found")
+
+    raise RuntimeError("Could not find Search control.")
+
+
+async def page_contains_ministry_search(page):
+    """
+    Check whether Search by Ministry is present.
+    """
+    try:
+        text = await page.locator("body").inner_text()
+        return bool(re.search(r"Search\s+by\s+Ministry", text, re.I))
+    except Exception:
+        return False
 
 
 async def click_search_by_ministry(page):
     print("Opening Search by Ministry...")
 
-    if await click_text(page, "Search by Ministry"):
-        await page.wait_for_load_state("domcontentloaded")
-        return
+    #
+    # Important:
+    # wait for the actual menu to become present.
+    #
+    for attempt in range(1, 6):
+        print(f"  Waiting for ministry search " f"({attempt}/5)...")
 
-    locator = page.locator(
-        'a:has-text("Search by Ministry"), '
-        'input[value*="Ministry" i], '
-        'button:has-text("Search by Ministry")'
-    )
+        await wait_for_page_stable(page)
 
-    if await locator.count():
-        await locator.first.click()
-        await page.wait_for_load_state("domcontentloaded")
-        return
+        if await page_contains_ministry_search(page):
+            print("  Search by Ministry text detected.")
+
+            success = await click_exact_visible_text(page, "Search by Ministry")
+
+            if success:
+                await wait_for_page_stable(page)
+                await page.wait_for_timeout(750)
+                return
+
+        #
+        # Maybe Search click did not actually transition.
+        #
+        body = ""
+        try:
+            body = await page.locator("body").inner_text()
+        except Exception:
+            pass
+
+        print("  Current URL:", page.url)
+
+        print("  Body preview:", repr(body[:300]))
+
+        await page.wait_for_timeout(1500)
+
+    await debug_page(page, "search_by_ministry_not_found")
 
     raise RuntimeError("Could not find Search by Ministry.")
 
@@ -106,190 +231,132 @@ async def select_mca_ministry(page):
     selects = page.locator("select")
     count = await selects.count()
 
+    print(f"  Found {count} <select> elements.")
+
     for i in range(count):
         select = selects.nth(i)
 
         try:
+            if not await select.is_visible():
+                continue
+
             options = await select.locator("option").all_text_contents()
+
+            clean = [option.strip() for option in options]
+
+            if any("Ministry of Corporate Affairs" in option for option in clean):
+                for option in clean:
+                    if "Ministry of Corporate Affairs" in option:
+                        await select.select_option(label=option)
+
+                        print("Ministry selected:", option)
+                        return
+
         except Exception:
             continue
 
-        options_clean = [x.strip() for x in options]
+    await debug_page(page, "ministry_dropdown_not_found")
 
-        if any("Ministry of Corporate Affairs" in option for option in options_clean):
-            try:
-                await select.select_option(label="Ministry of Corporate Affairs")
-            except Exception:
-                for index, option in enumerate(options_clean):
-                    if "Ministry of Corporate Affairs" in option:
-                        await select.select_option(index=index)
-                        break
-
-            print("Ministry selected.")
-            return
-
-    raise RuntimeError(
-        "Could not find Ministry dropdown containing " "'Ministry of Corporate Affairs'."
-    )
+    raise RuntimeError("Could not locate Ministry of Corporate Affairs.")
 
 
 async def select_date_wise(page):
     print("Selecting Date Wise mode...")
 
-    # First try associated label
-    label = page.get_by_text(re.compile(r"^\s*Date\s*Wise\s*$", re.I), exact=False)
-
-    try:
-        count = await label.count()
-
-        for i in range(count):
-            element = label.nth(i)
-
-            try:
-                await element.click()
-                await page.wait_for_timeout(300)
-
-                # verify some radio is now selected
-                checked = page.locator('input[type="radio"]:checked')
-                if await checked.count():
-                    print("Date Wise selected.")
-                    return
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    # Inspect radio buttons and surrounding text
     radios = page.locator('input[type="radio"]')
-    radio_count = await radios.count()
 
-    for i in range(radio_count):
-        radio = radios.nth(i)
+    count = await radios.count()
+
+    print(f"  Found {count} radio controls.")
+
+    #
+    # First try matching labels.
+    #
+    labels = page.locator("label")
+
+    for i in range(await labels.count()):
+        label = labels.nth(i)
 
         try:
-            value = (await radio.get_attribute("value") or "").lower()
-            rid = await radio.get_attribute("id")
+            text = (await label.inner_text()).strip()
 
-            surrounding = ""
+            if re.fullmatch(r"Date\s*Wise", text, re.I):
+                await label.click()
+                await page.wait_for_timeout(300)
 
-            if rid:
-                assoc_label = page.locator(f'label[for="{rid}"]')
-                if await assoc_label.count():
-                    surrounding = (await assoc_label.first.inner_text()).lower()
-
-            if "date" in value or "date" in surrounding:
-                await radio.check(force=True)
-                print("Date Wise selected.")
-                return
-
+                if await page.locator('input[type="radio"]:checked').count():
+                    print("Date Wise selected.")
+                    return
         except Exception:
             pass
 
-    # Screenshot suggests second radio is Date Wise
-    if radio_count >= 2:
+    #
+    # Screenshot shows Month/Year first,
+    # Date Wise second.
+    #
+    if count >= 2:
         await radios.nth(1).check(force=True)
-        print("Date Wise selected using second-radio fallback.")
+
+        print("Date Wise selected using radio #2.")
         return
+
+    await debug_page(page, "date_wise_not_found")
 
     raise RuntimeError("Could not select Date Wise.")
 
 
 async def determine_date_inputs(page):
-    """
-    Locate the two visible date inputs appearing in the
-    'Date of Issue of Notification' row.
-    """
+    inputs = page.locator('input[type="text"], ' "input:not([type])")
 
-    inputs = page.locator("input:not([type]), " 'input[type="text"], ' 'input[type="date"]')
+    visible = []
 
-    count = await inputs.count()
-
-    candidates = []
-
-    for i in range(count):
+    for i in range(await inputs.count()):
         el = inputs.nth(i)
 
-        try:
-            if not await el.is_visible():
-                continue
-
-            value = await el.input_value()
-
-            placeholder = await el.get_attribute("placeholder") or ""
-
-            name = await el.get_attribute("name") or ""
-
-            eid = await el.get_attribute("id") or ""
-
-            combined = " ".join([value, placeholder, name, eid]).lower()
-
-            # Typical Gazette date fields either have a date already
-            # or have date-related IDs/names.
-            date_pattern = re.compile(
-                r"\d{1,2}[-/][A-Za-z]{3}[-/]\d{4}" r"|\d{1,2}[-/]\d{1,2}[-/]\d{4}"
-            )
-
-            if (
-                date_pattern.search(value)
-                or "date" in combined
-                or "from" in combined
-                or "to" in combined
-            ):
-                candidates.append(el)
-
-        except Exception:
-            pass
-
-    # If exactly what we need was found
-    if len(candidates) >= 2:
-        return candidates[0], candidates[1]
-
-    # Fallback:
-    # collect text inputs whose current values resemble the
-    # dates visible in the screenshot.
-    visible_text_inputs = []
-
-    for i in range(count):
-        el = inputs.nth(i)
         try:
             if await el.is_visible():
-                visible_text_inputs.append(el)
+                visible.append(el)
         except Exception:
             pass
 
-    for i in range(len(visible_text_inputs) - 1):
-        first = visible_text_inputs[i]
-        second = visible_text_inputs[i + 1]
+    #
+    # Prefer inputs whose existing values resemble dates.
+    #
+    date_inputs = []
 
+    pattern = re.compile(r"\d{1,2}-[A-Za-z]{3}-\d{4}")
+
+    for el in visible:
         try:
-            v1 = await first.input_value()
-            v2 = await second.input_value()
+            value = await el.input_value()
 
-            if ("2013" in v1 or "Jan" in v1) and re.search(r"\d{4}", v2):
-                return first, second
+            if pattern.fullmatch(value.strip()):
+                date_inputs.append(el)
+
         except Exception:
             pass
 
-    # Last-resort assumption: final two visible text inputs are dates.
-    if len(visible_text_inputs) >= 2:
-        return (visible_text_inputs[-2], visible_text_inputs[-1])
+    if len(date_inputs) >= 2:
+        return (date_inputs[0], date_inputs[1])
 
-    raise RuntimeError("Could not identify From and To date fields.")
+    #
+    # Fallback: last two visible text fields.
+    #
+    if len(visible) >= 2:
+        return (visible[-2], visible[-1])
+
+    raise RuntimeError("Could not determine date inputs.")
 
 
 async def enter_dates(page):
-    print(f"Setting date range: {FROM_DATE} -> {TO_DATE}")
+    print(f"Setting date range: " f"{FROM_DATE} -> {TO_DATE}")
 
     from_input, to_input = await determine_date_inputs(page)
 
-    await from_input.click()
     await from_input.fill(FROM_DATE)
-
-    await to_input.click()
-    await to_input.fill(TO_DATE)
-
-    # Trigger legacy JS onchange/blur handlers
     await from_input.press("Tab")
+
+    await to_input.fill(TO_DATE)
     await to_input.press("Tab")
 
     print("Dates entered:", await from_input.input_value(), "to", await to_input.input_value())
@@ -298,366 +365,167 @@ async def enter_dates(page):
 async def submit_search(page):
     print("Submitting search...")
 
-    buttons = [
-        page.get_by_role("button", name=re.compile(r"^\s*Submit\s*$", re.I)),
-        page.locator('input[type="submit"][value*="Submit" i]'),
-        page.locator('input[type="button"][value*="Submit" i]'),
-        page.get_by_text("Submit", exact=True),
-    ]
+    await debug_page(page, "before_submit")
 
-    for locator in buttons:
+    buttons = page.locator('input[type="submit"], ' 'input[type="button"], ' "button")
+
+    count = await buttons.count()
+
+    for i in range(count):
+        button = buttons.nth(i)
+
         try:
-            if await locator.count():
+            value = await button.get_attribute("value") or ""
+
+            text = ""
+
+            try:
+                text = await button.inner_text()
+            except Exception:
+                pass
+
+            combined = (value + " " + text).strip()
+
+            if not re.search(r"\bSubmit\b", combined, re.I):
+                continue
+
+            if not await button.is_visible():
+                continue
+
+            print("  Clicking submit control:", repr(combined))
+
+            before_url = page.url
+
+            try:
                 async with page.expect_navigation(wait_until="domcontentloaded", timeout=30000):
-                    await locator.first.click()
+                    await button.click()
 
-                print("Results page loaded.")
-                return
+            except PlaywrightTimeoutError:
+                print("  No full navigation event; " "likely postback/AJAX.")
 
-        except PlaywrightTimeoutError:
-            # Ajax/postback may have happened without ordinary navigation
-            print("No normal navigation detected; " "checking current results page.")
+            await wait_for_page_stable(page)
+
+            #
+            # Critical:
+            # old server pages often modify DOM AFTER
+            # DOMContentLoaded.
+            #
             await page.wait_for_timeout(3000)
+
+            print("  URL before:", before_url)
+
+            print("  URL after :", page.url)
+
+            await debug_page(page, "after_submit")
+
             return
 
-        except Exception:
-            pass
+        except Exception as exc:
+            print("  Submit candidate error:", exc)
+
+    await debug_page(page, "submit_not_found")
 
     raise RuntimeError("Could not find Submit button.")
 
 
-async def get_pdf_links(page):
+async def inspect_results(page):
     """
-    Return PDF-like links on the current results page.
-    """
+    Print everything useful from result page.
 
-    results = []
-
-    links = page.locator("a[href]")
-    count = await links.count()
-
-    for i in range(count):
-        link = links.nth(i)
-
-        try:
-            href = await link.get_attribute("href")
-            text = (await link.inner_text()).strip()
-
-            if not href:
-                continue
-
-            absolute_url = urljoin(page.url, href)
-
-            haystack = f"{href} {text}".lower()
-
-            if (
-                ".pdf" in haystack
-                or "download" in haystack
-                or "view pdf" in haystack
-                or text.lower() == "pdf"
-            ):
-                results.append({"url": absolute_url, "text": text})
-
-        except Exception:
-            pass
-
-    # remove duplicates while preserving order
-    unique = []
-    seen = set()
-
-    for item in results:
-        if item["url"] in seen:
-            continue
-
-        seen.add(item["url"])
-        unique.append(item)
-
-    return unique
-
-
-async def save_pdf_using_context(context, pdf_url, destination):
-    """
-    Uses Playwright's request context so cookies/session are reused.
-    This is important if Gazette PDF URLs require the active session.
+    We deliberately inspect:
+    - anchor href
+    - onclick handlers
+    - image links
+    - javascript links
+    - forms
+    - buttons
+    - pagination-looking controls
     """
 
-    response = await context.request.get(pdf_url, timeout=60000)
+    print("\n========== RESULT PAGE INSPECTION ==========")
 
-    if not response.ok:
-        raise RuntimeError(f"HTTP {response.status} for {pdf_url}")
+    print("URL:", page.url)
 
-    body = await response.body()
+    body_text = ""
 
-    destination.write_bytes(body)
+    try:
+        body_text = await page.locator("body").inner_text()
+    except Exception:
+        pass
 
-    return len(body)
+    print("\nBODY TEXT PREVIEW:\n")
+    print(body_text[:5000])
 
-
-async def download_current_page_pdfs(
-    page, context, downloaded_urls, manifest_rows, result_page_number
-):
-    links = await get_pdf_links(page)
-
-    print(f"Page {result_page_number}: " f"found {len(links)} candidate PDF links")
-
-    new_downloads = 0
-
-    for index, item in enumerate(links, start=1):
-        url = item["url"]
-
-        if url in downloaded_urls:
-            continue
-
-        fallback = f"page_{result_page_number:04d}_" f"document_{index:03d}.pdf"
-
-        filename = filename_from_url(url, fallback)
-
-        # Prevent duplicate filename overwrites
-        path = DOWNLOAD_DIR / filename
-
-        if path.exists():
-            stem = path.stem
-            suffix = path.suffix
-
-            n = 2
-            while True:
-                alternative = DOWNLOAD_DIR / f"{stem}_{n}{suffix}"
-
-                if not alternative.exists():
-                    path = alternative
-                    break
-
-                n += 1
-
-        try:
-            size = await save_pdf_using_context(context, url, path)
-
-            downloaded_urls.add(url)
-            new_downloads += 1
-
-            manifest_rows.append(
-                {
-                    "result_page": result_page_number,
-                    "filename": path.name,
-                    "link_text": item["text"],
-                    "url": url,
-                    "bytes": size,
-                    "status": "downloaded",
-                }
-            )
-
-            print(f"  [{new_downloads}] " f"{path.name} " f"({size / 1024:.1f} KB)")
-
-        except Exception as exc:
-            print(f"  ERROR downloading {url}: {exc}")
-
-            manifest_rows.append(
-                {
-                    "result_page": result_page_number,
-                    "filename": "",
-                    "link_text": item["text"],
-                    "url": url,
-                    "bytes": "",
-                    "status": f"ERROR: {exc}",
-                }
-            )
-
-    return new_downloads
-
-
-async def get_numeric_pagination_links(page):
-    """
-    Detect visible anchors whose text is purely numeric.
-
-    Example:
-        1 2 3 4 5 6 7 8 9 10
-    """
+    print("\n========== LINKS ==========")
 
     links = page.locator("a")
-    count = await links.count()
+    link_count = await links.count()
 
-    pages = {}
+    print(f"Total <a> tags: {link_count}")
 
-    for i in range(count):
-        link = links.nth(i)
-
-        try:
-            if not await link.is_visible():
-                continue
-
-            text = (await link.inner_text()).strip()
-
-            if not re.fullmatch(r"\d+", text):
-                continue
-
-            number = int(text)
-
-            # Avoid absurdly large unrelated numeric links
-            if number < 1 or number > 100000:
-                continue
-
-            pages[number] = link
-
-        except Exception:
-            pass
-
-    return pages
-
-
-async def click_page_number(page, number):
-    """
-    Re-fetch locator immediately before clicking because legacy
-    postbacks usually invalidate all old DOM nodes.
-    """
-
-    matching = page.locator("a", has_text=re.compile(rf"^\s*{number}\s*$"))
-
-    count = await matching.count()
-
-    for i in range(count):
-        candidate = matching.nth(i)
+    for i in range(link_count):
+        a = links.nth(i)
 
         try:
-            text = (await candidate.inner_text()).strip()
-
-            if text != str(number):
-                continue
-
-            if not await candidate.is_visible():
-                continue
-
-            print(f"Opening results page {number}...")
-
-            try:
-                async with page.expect_navigation(wait_until="domcontentloaded", timeout=20000):
-                    await candidate.click()
-
-            except PlaywrightTimeoutError:
-                # likely ASP.NET postback/AJAX
-                await page.wait_for_timeout(2000)
-
-            return True
-
+            text = (await a.inner_text()).strip()
         except Exception:
-            pass
+            text = ""
 
-    return False
+        href = await a.get_attribute("href")
 
+        onclick = await a.get_attribute("onclick")
 
-async def process_pagination(page, context, downloaded_urls, manifest_rows):
-    """
-    Traverse numeric pagination.
+        title = await a.get_attribute("title")
 
-    This intentionally re-scans the pagination after every click
-    because old Government/ASP.NET pages often replace the whole DOM.
-    """
-
-    visited_pages = set()
-    current_page = 1
-
-    while True:
-
-        if current_page not in visited_pages:
-            visited_pages.add(current_page)
-
-            await download_current_page_pdfs(
-                page, context, downloaded_urls, manifest_rows, current_page
+        if text or href or onclick:
+            print(
+                f"\n[{i}]"
+                f"\n text    = {text!r}"
+                f"\n href    = {href!r}"
+                f"\n onclick = {onclick!r}"
+                f"\n title   = {title!r}"
             )
 
-        numeric_pages = await get_numeric_pagination_links(page)
+    print("\n========== INPUTS ==========")
 
-        available_numbers = sorted(numeric_pages.keys())
+    inputs = page.locator("input")
+    input_count = await inputs.count()
 
-        print("Visible pagination:", available_numbers)
+    for i in range(input_count):
+        el = inputs.nth(i)
 
-        unvisited = [n for n in available_numbers if n not in visited_pages]
-
-        if unvisited:
-            next_page = unvisited[0]
-
-            clicked = await click_page_number(page, next_page)
-
-            if clicked:
-                current_page = next_page
-                continue
-
-        #
-        # Some sites show only a block such as:
-        #
-        # 1 2 3 4 5 6 7 8 9 10 Next
-        #
-        # and later:
-        #
-        # 11 12 13 ...
-        #
-        # Try "Next" / ">" when all currently visible page numbers
-        # are already processed.
-        #
-        next_candidates = [
-            page.get_by_role("link", name=re.compile(r"^\s*Next\s*$", re.I)),
-            page.locator('a:has-text("Next")'),
-            page.locator('a:text-is(">")'),
-            page.locator('a:text-is(">>")'),
-        ]
-
-        advanced = False
-
-        for locator in next_candidates:
-            try:
-                if not await locator.count():
-                    continue
-
-                candidate = locator.first
-
-                if not await candidate.is_visible():
-                    continue
-
-                try:
-                    async with page.expect_navigation(wait_until="domcontentloaded", timeout=20000):
-                        await candidate.click()
-
-                except PlaywrightTimeoutError:
-                    await page.wait_for_timeout(2000)
-
-                # Determine the new active/visible numeric page.
-                new_numbers = sorted((await get_numeric_pagination_links(page)).keys())
-
-                possible = [n for n in new_numbers if n not in visited_pages]
-
-                if possible:
-                    current_page = possible[0]
-                else:
-                    current_page = max(visited_pages, default=current_page) + 1
-
-                advanced = True
-                break
-
-            except Exception:
-                pass
-
-        if advanced:
-            continue
-
-        print("No unvisited pagination links remain.")
-        break
-
-
-def write_manifest(rows):
-    with MANIFEST_FILE.open("w", newline="", encoding="utf-8") as f:
-
-        writer = csv.DictWriter(
-            f, fieldnames=["result_page", "filename", "link_text", "url", "bytes", "status"]
+        print(
+            f"[{i}]",
+            "type=",
+            await el.get_attribute("type"),
+            "name=",
+            await el.get_attribute("name"),
+            "value=",
+            await el.get_attribute("value"),
+            "onclick=",
+            await el.get_attribute("onclick"),
         )
 
-        writer.writeheader()
-        writer.writerows(rows)
+    print("\n========== FORMS ==========")
+
+    forms = page.locator("form")
+
+    for i in range(await forms.count()):
+        form = forms.nth(i)
+
+        print(
+            f"[{i}]",
+            "action=",
+            await form.get_attribute("action"),
+            "method=",
+            await form.get_attribute("method"),
+        )
+
+    print("\n============================================\n")
 
 
 async def main():
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-    downloaded_urls = set()
-    manifest_rows = []
 
     async with async_playwright() as p:
 
@@ -667,11 +535,17 @@ async def main():
 
         page = await context.new_page()
 
-        page.set_default_timeout(15000)
+        #
+        # Government websites can be slow.
+        #
+        page.set_default_timeout(20000)
 
         try:
             print("Opening eGazette...")
+
             await page.goto(BASE_URL, wait_until="domcontentloaded", timeout=60000)
+
+            await wait_for_page_stable(page)
 
             await click_search(page)
 
@@ -688,37 +562,41 @@ async def main():
                 f"\n  Ministry : Ministry of Corporate Affairs"
                 f"\n  Mode     : Date Wise"
                 f"\n  From     : {FROM_DATE}"
-                f"\n  To       : {TO_DATE}\n"
+                f"\n  To       : {TO_DATE}"
+                "\n"
             )
 
             await submit_search(page)
 
-            # Give old server-rendered page a little extra time
-            await page.wait_for_timeout(3000)
+            #
+            # For now don't attempt download.
+            # First determine exact result structure.
+            #
+            await inspect_results(page)
 
-            await process_pagination(page, context, downloaded_urls, manifest_rows)
+            print("\nInspection complete.")
+
+            print("Please inspect:")
+
+            print(f"  {DOWNLOAD_DIR / 'after_submit.png'}")
+
+            print(f"  {DOWNLOAD_DIR / 'after_submit.html'}")
+
+            print(f"  {DOWNLOAD_DIR / 'after_submit_links.txt'}")
+
+            #
+            # Keep browser alive briefly so you can inspect manually.
+            #
+            print("\nBrowser will remain open for 30 seconds...")
+
+            await page.wait_for_timeout(30000)
 
         except Exception as exc:
-            print("\nFATAL ERROR:", exc)
+            print("\nFATAL ERROR:", repr(exc))
 
-            try:
-                await page.screenshot(
-                    path=str(DOWNLOAD_DIR / "error_screenshot.png"), full_page=True
-                )
-
-                print("Saved debugging screenshot:" "\n ", DOWNLOAD_DIR / "error_screenshot.png")
-            except Exception:
-                pass
+            await debug_page(page, "fatal_error")
 
         finally:
-            write_manifest(manifest_rows)
-
-            print("\n-------------------------------")
-            print(f"Unique PDFs downloaded: " f"{len(downloaded_urls)}")
-            print(f"Download directory: " f"{DOWNLOAD_DIR.resolve()}")
-            print(f"Manifest: " f"{MANIFEST_FILE.resolve()}")
-            print("-------------------------------")
-
             await browser.close()
 
 
