@@ -5,24 +5,40 @@ import csv
 import re
 from pathlib import Path
 
-from playwright.async_api import (
-    async_playwright,
-    TimeoutError as PlaywrightTimeoutError,
-)
+from playwright.async_api import async_playwright
+
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-START_URL = "https://www.mca.gov.in/content/mca/global/en/home.html"
+START_URL = (
+    "https://www.mca.gov.in/content/mca/global/en/home.html"
+)
+
+RULES_DIRECT_URL = (
+    "https://www.mca.gov.in/content/mca/global/en/"
+    "acts-rules/ebooks/rules.html"
+)
 
 TARGET_ACT = "The Companies Act, 2013"
 TARGET_ACT_DATA_ID = "J105_D"
 
-OUTPUT_ROOT = Path("mca_companies_act_2013")
-DOWNLOAD_DIR = OUTPUT_ROOT / "rules"
-DEBUG_DIR = OUTPUT_ROOT / "debug"
-MANIFEST_FILE = DOWNLOAD_DIR / "downloads.csv"
+OUTPUT_ROOT = Path(
+    "mca_companies_act_2013"
+)
+
+DOWNLOAD_DIR = (
+    OUTPUT_ROOT / "rules"
+)
+
+DEBUG_DIR = (
+    OUTPUT_ROOT / "debug"
+)
+
+MANIFEST_FILE = (
+    DOWNLOAD_DIR / "downloads.csv"
+)
 
 DOWNLOAD_DIR.mkdir(
     parents=True,
@@ -35,9 +51,13 @@ DEBUG_DIR.mkdir(
 )
 
 DEFAULT_TIMEOUT = 30000
-DOWNLOAD_TIMEOUT = 60000
 
 NAVIGATION_RETRIES = 10
+
+ACT_OPTIONS_TIMEOUT_SECONDS = 60
+GO_RESULTS_TIMEOUT_SECONDS = 60
+
+DOWNLOAD_WAIT_SECONDS = 30
 
 
 # ============================================================
@@ -46,13 +66,32 @@ NAVIGATION_RETRIES = 10
 
 MANIFEST_FIELDS = [
     "table_row",
-    "rule_group",
+    "rules",
+    "rule_contains",
+    "notification_date",
     "rule_title",
-    "pdf_option",
     "original_pdf",
     "saved_filename",
     "status",
 ]
+
+
+def load_manifest():
+    if not MANIFEST_FILE.exists():
+        return []
+
+    try:
+        with MANIFEST_FILE.open(
+            "r",
+            newline="",
+            encoding="utf-8-sig",
+        ) as file:
+            return list(
+                csv.DictReader(file)
+            )
+
+    except Exception:
+        return []
 
 
 def save_manifest(rows):
@@ -75,11 +114,13 @@ def save_manifest(rows):
 # GENERAL HELPERS
 # ============================================================
 
-
 def clean_text(value):
     value = value or ""
 
-    value = value.replace("\xa0", " ")
+    value = value.replace(
+        "\xa0",
+        " ",
+    )
 
     value = re.sub(
         r"\s+",
@@ -124,7 +165,6 @@ def is_rules_url(url):
 # DEBUG
 # ============================================================
 
-
 async def save_debug(
     page,
     name,
@@ -136,18 +176,41 @@ async def save_debug(
     )
 
     try:
+        screenshot_path = (
+            DEBUG_DIR
+            / f"{safe_name}.png"
+        )
+
         await page.screenshot(
-            path=str(DEBUG_DIR / f"{safe_name}.png"),
+            path=str(
+                screenshot_path
+            ),
             full_page=True,
         )
+
+        print(
+            "  Screenshot:",
+            screenshot_path.resolve(),
+        )
+
     except Exception:
         pass
 
-    for frame_index, frame in enumerate(page.frames):
+    for frame_index, frame in enumerate(
+        page.frames
+    ):
         try:
             html = await frame.content()
 
-            (DEBUG_DIR / f"{safe_name}_frame_{frame_index}.html").write_text(
+            html_path = (
+                DEBUG_DIR
+                / (
+                    f"{safe_name}_"
+                    f"frame_{frame_index}.html"
+                )
+            )
+
+            html_path.write_text(
                 html,
                 encoding="utf-8",
             )
@@ -155,19 +218,22 @@ async def save_debug(
         except Exception:
             pass
 
-    print(f"  Debug saved: {name}")
+    print(
+        f"  Debug saved: {name}"
+    )
 
 
 # ============================================================
 # FILENAME HELPERS
 # ============================================================
 
-
 def sanitize_filename_component(
     value,
 ):
     value = clean_text(value)
 
+    # Linux cannot use "/" inside a filename.
+    # Windows-invalid characters are also cleaned.
     value = re.sub(
         r'[<>:"/\\|?*\x00-\x1f]',
         "-",
@@ -180,7 +246,9 @@ def sanitize_filename_component(
         value,
     )
 
-    value = value.strip(" .-_")
+    value = value.strip(
+        " ."
+    )
 
     return value or "NA"
 
@@ -189,7 +257,9 @@ def truncate_utf8(
     value,
     max_bytes,
 ):
-    raw = value.encode("utf-8")
+    raw = value.encode(
+        "utf-8"
+    )
 
     if len(raw) <= max_bytes:
         return value
@@ -198,7 +268,12 @@ def truncate_utf8(
 
     while raw:
         try:
-            return raw.decode("utf-8").rstrip() + "…"
+            return (
+                raw.decode(
+                    "utf-8"
+                ).rstrip()
+                + "…"
+            )
 
         except UnicodeDecodeError:
             raw = raw[:-1]
@@ -206,81 +281,152 @@ def truncate_utf8(
     return ""
 
 
-def build_filename(
-    document_title,
-    rule_title,
-    pdf_option,
-    original_pdf,
-    max_bytes=240,
+def normalize_notification_date(
+    value,
 ):
     """
-    Requested filename:
+    Example:
 
-    <docRightTitleDefault h1>
-    -
-    <rulePopup link text>
-    -
-    <radio option name>
-    (<original PDF filename>).pdf
+    31/03/2014
+        ->
+    31-03-2014
+
+    Slash cannot be part of a Linux filename.
     """
 
-    document_title = sanitize_filename_component(document_title)
+    value = clean_text(value)
 
-    rule_title = sanitize_filename_component(rule_title)
+    value = value.replace(
+        "/",
+        "-",
+    )
 
-    pdf_option = sanitize_filename_component(pdf_option)
+    return value
 
-    original_pdf = sanitize_filename_component(original_pdf)
+
+def build_filename(
+    rules_name,
+    rule_contains,
+    notification_date,
+    rule_title,
+    max_bytes=245,
+):
+    """
+    Required logical format:
+
+    Rules - Rule Contains - Notification Date - Individual Rule .pdf
+
+    Example:
+
+    Chapter I The Companies (Specification of Definitions Details) Rules, 2014
+    - Rule 1 to 4
+    - 31-03-2014
+    - 1. Short Title and Commencement .pdf
+    """
+
+    rules_name = (
+        sanitize_filename_component(
+            rules_name
+        )
+    )
+
+    rule_contains = (
+        sanitize_filename_component(
+            rule_contains
+        )
+    )
+
+    notification_date = (
+        normalize_notification_date(
+            notification_date
+        )
+    )
+
+    notification_date = (
+        sanitize_filename_component(
+            notification_date
+        )
+    )
+
+    rule_title = (
+        sanitize_filename_component(
+            rule_title
+        )
+    )
 
     components = [
-        document_title,
+        rules_name,
+        rule_contains,
+        notification_date,
         rule_title,
-        pdf_option,
     ]
 
+    suffix = " .pdf"
     separator = " - "
 
-    suffix = f" ({original_pdf}).pdf"
-
     def compose():
-        return separator.join(components) + suffix
-
-    filename = compose()
-
-    if len(filename.encode("utf-8")) <= max_bytes:
-        return filename
-
-    while len(compose().encode("utf-8")) > max_bytes:
-        component_sizes = [len(item.encode("utf-8")) for item in components]
-
-        largest_index = max(
-            range(len(components)),
-            key=lambda index: component_sizes[index],
-        )
-
-        if component_sizes[largest_index] <= 16:
-            break
-
-        components[largest_index] = truncate_utf8(
-            components[largest_index],
-            max(
-                16,
-                component_sizes[largest_index] - 8,
-            ),
-        )
-
-    filename = compose()
-
-    if len(filename.encode("utf-8")) > max_bytes:
-        available = max_bytes - len(suffix.encode("utf-8"))
-
-        filename = (
-            truncate_utf8(
-                separator.join(components),
-                available,
+        return (
+            separator.join(
+                components
             )
             + suffix
         )
+
+    filename = compose()
+
+    if (
+        len(
+            filename.encode("utf-8")
+        )
+        <= max_bytes
+    ):
+        return filename
+
+    # --------------------------------------------------------
+    # Preserve important metadata while shortening long names.
+    # Prefer shortening Rules title first, then rule title.
+    # --------------------------------------------------------
+
+    shrink_order = [
+        0,
+        3,
+        1,
+    ]
+
+    while (
+        len(
+            compose().encode("utf-8")
+        )
+        > max_bytes
+    ):
+        changed = False
+
+        for index in shrink_order:
+            current = components[
+                index
+            ]
+
+            current_bytes = len(
+                current.encode("utf-8")
+            )
+
+            if current_bytes <= 30:
+                continue
+
+            components[index] = (
+                truncate_utf8(
+                    current,
+                    current_bytes - 10,
+                )
+            )
+
+            changed = True
+            break
+
+        if not changed:
+            break
+
+    filename = compose()
 
     return filename
 
@@ -289,470 +435,404 @@ def build_filename(
 # DUPLICATE CHECK
 # ============================================================
 
-
-def original_pdf_already_downloaded(
-    original_pdf,
+def destination_exists(
+    filename,
 ):
-    """
-    Download folder is authoritative.
+    destination = (
+        DOWNLOAD_DIR
+        / filename
+    )
 
-    Generated filename example:
-
-        Rule Set - Rule 3 - Amendment
-        (GSR123.pdf).pdf
-
-    We extract:
-        GSR123.pdf
-
-    and compare with current suggested filename.
-    """
-
-    wanted = clean_text(original_pdf).lower()
-
-    if not wanted:
-        return False
-
-    for path in DOWNLOAD_DIR.glob("*.pdf"):
-        match = re.search(
-            r"\(([^()]+\.pdf)\)\.pdf$",
-            path.name,
-            re.I,
-        )
-
-        if not match:
-            continue
-
-        existing = clean_text(match.group(1)).lower()
-
-        if existing == wanted:
-            return True
-
-    return False
+    return destination.exists()
 
 
 # ============================================================
-# OPEN HOME
+# MCA HOME
 # ============================================================
 
-
-async def open_home(
-    page,
-):
+async def open_home(page):
     print()
     print("=" * 78)
     print("OPENING MCA HOME")
     print("=" * 78)
 
-    await page.goto(
+    response = await page.goto(
         START_URL,
         wait_until="domcontentloaded",
         timeout=60000,
     )
 
-    await page.wait_for_timeout(1200)
+    if response is not None:
+        print(
+            "HTTP status:",
+            response.status,
+        )
+
+    await page.wait_for_timeout(
+        1500
+    )
 
     print(
         "URL:",
         page.url,
     )
 
+    try:
+        print(
+            "TITLE:",
+            await page.title(),
+        )
+
+    except Exception:
+        pass
+
+    if (
+        response is not None
+        and response.status >= 400
+    ):
+        raise RuntimeError(
+            "MCA home returned "
+            f"HTTP {response.status}"
+        )
+
 
 # ============================================================
 # FIND ACTS & RULES LINK
 # ============================================================
 
-
 async def find_acts_rules_link(
     page,
 ):
     selectors = [
-        (".second-navigation " 'a[href="/content/mca/global/en/acts-rules.html"]'),
-        ('a[href="/content/mca/global/en/acts-rules.html"]'),
+        (
+            '.second-navigation '
+            'a[href="/content/mca/global/en/acts-rules.html"]'
+        ),
+        (
+            'a[href="/content/mca/global/en/acts-rules.html"]'
+        ),
     ]
 
     for selector in selectors:
-        locator = page.locator(selector)
+        locator = (
+            page.locator(
+                selector
+            )
+        )
 
-        count = await locator.count()
+        count = (
+            await locator.count()
+        )
 
-        print(f"Acts & Rules selector " f"{selector!r}: {count}")
+        print(
+            f"Acts & Rules selector "
+            f"{selector!r}: {count}"
+        )
 
-        for index in range(count):
-            candidate = locator.nth(index)
+        for index in range(
+            count
+        ):
+            candidate = (
+                locator.nth(index)
+            )
 
             try:
                 if await candidate.is_visible():
                     return candidate
+
             except Exception:
                 pass
 
     return None
-
-
-# ============================================================
-# FIND RULES LINK
-# ============================================================
-
-
-async def find_rules_link_fast(
-    page,
-    timeout_seconds=8,
-):
-    """
-    Rules lives under:
-
-        .second-navigation
-            .ebooknavigation
-                a.menuClick[data-doccategory="Rules"]
-    """
-
-    selectors = [
-        (
-            ".second-navigation "
-            ".ebooknavigation "
-            "a.menuClick"
-            '[data-doccategory="Rules"]'
-            '[data-redirect="/ebooks/rules.html"]'
-        ),
-        (".ebooknavigation " "a.menuClick" '[data-doccategory="Rules"]'),
-        ("a.menuClick" '[data-doccategory="Rules"]' '[data-redirect="/ebooks/rules.html"]'),
-        ('a[data-doccategory="Rules"]' '[data-redirect="/ebooks/rules.html"]'),
-        ('a[val="Rules"]' '[data-redirect="/ebooks/rules.html"]'),
-    ]
-
-    loop = asyncio.get_running_loop()
-
-    started = loop.time()
-
-    attempt = 0
-
-    while loop.time() - started < timeout_seconds:
-        attempt += 1
-
-        print(
-            f"  Rules DOM check {attempt}:",
-            page.url,
-        )
-
-        if is_home_url(page.url):
-            return (
-                None,
-                None,
-            )
-
-        for frame_index, frame in enumerate(page.frames):
-            for selector in selectors:
-                try:
-                    locator = frame.locator(selector)
-
-                    count = await locator.count()
-
-                except Exception:
-                    continue
-
-                if not count:
-                    continue
-
-                print(f"    MATCH in frame " f"#{frame_index}")
-
-                for index in range(count):
-                    candidate = locator.nth(index)
-
-                    try:
-                        text = clean_text(await candidate.inner_text())
-                    except Exception:
-                        text = ""
-
-                    redirect = await candidate.get_attribute("data-redirect") or ""
-
-                    category = await candidate.get_attribute("data-doccategory") or ""
-
-                    val = await candidate.get_attribute("val") or ""
-
-                    try:
-                        visible = await candidate.is_visible()
-                    except Exception:
-                        visible = False
-
-                    print(
-                        "      text:",
-                        repr(text),
-                    )
-
-                    print(
-                        "      redirect:",
-                        repr(redirect),
-                    )
-
-                    print(
-                        "      category:",
-                        repr(category),
-                    )
-
-                    print(
-                        "      val:",
-                        repr(val),
-                    )
-
-                    print(
-                        "      visible:",
-                        visible,
-                    )
-
-                    if not visible:
-                        continue
-
-                    if redirect == "/ebooks/rules.html" and (
-                        category.lower() == "rules"
-                        or val.lower() == "rules"
-                        or text.lower() == "rules"
-                    ):
-                        return (
-                            frame,
-                            candidate,
-                        )
-
-        await page.wait_for_timeout(100)
-
-    return (
-        None,
-        None,
-    )
 
 
 # ============================================================
 # WAIT FOR RULES FORM
 # ============================================================
 
-
 async def wait_for_rules_form(
     page,
-    timeout_seconds=15,
+    timeout_seconds=20,
 ):
-    loop = asyncio.get_running_loop()
+    loop = (
+        asyncio.get_running_loop()
+    )
 
-    started = loop.time()
+    start = loop.time()
 
-    while loop.time() - started < timeout_seconds:
-        if is_home_url(page.url):
-            return None
-
-        for frame_index, frame in enumerate(page.frames):
+    while (
+        loop.time() - start
+        < timeout_seconds
+    ):
+        for (
+            frame_index,
+            frame,
+        ) in enumerate(
+            page.frames
+        ):
             try:
-                dropdown = frame.locator("#DropDown_RuleAct")
+                dropdown = (
+                    frame.locator(
+                        "#DropDown_RuleAct"
+                    )
+                )
 
-                if await dropdown.count() == 0:
+                if (
+                    await dropdown.count()
+                    == 0
+                ):
                     continue
 
-                print("  #DropDown_RuleAct " f"found in frame " f"#{frame_index}")
+                print(
+                    "#DropDown_RuleAct "
+                    "found in frame "
+                    f"#{frame_index}"
+                )
 
                 return frame
 
             except Exception:
                 pass
 
-        await page.wait_for_timeout(100)
+        await page.wait_for_timeout(
+            100
+        )
 
     return None
 
 
 # ============================================================
-# ATOMIC RULES LINK CLICK
+# CLICK RULES
 # ============================================================
 
-
-async def click_rules_atomically(
-    frame,
+async def click_rules_real(
+    page,
 ):
-    """
-    Re-find the element inside one JS execution,
-    then click immediately.
+    print()
+    print(
+        "Searching for Rules link "
+        "for real Playwright click..."
+    )
 
-    This reduces stale-locator problems on MCA.
-    """
+    selectors = [
+        (
+            '.ebooknavigation '
+            'a.menuClick'
+            '[data-doccategory="Rules"]'
+        ),
+        (
+            'a.menuClick'
+            '[data-doccategory="Rules"]'
+            '[data-redirect="/ebooks/rules.html"]'
+        ),
+        (
+            'a[data-doccategory="Rules"]'
+            '[data-redirect="/ebooks/rules.html"]'
+        ),
+        (
+            'a[val="Rules"]'
+            '[data-redirect="/ebooks/rules.html"]'
+        ),
+    ]
 
-    return await frame.evaluate("""
-        () => {
-            const selectors = [
-                '.second-navigation '
-                + '.ebooknavigation '
-                + 'a.menuClick'
-                + '[data-doccategory="Rules"]'
-                + '[data-redirect="/ebooks/rules.html"]',
-
-                '.ebooknavigation '
-                + 'a.menuClick'
-                + '[data-doccategory="Rules"]',
-
-                'a.menuClick'
-                + '[data-doccategory="Rules"]'
-                + '[data-redirect="/ebooks/rules.html"]',
-
-                'a[data-doccategory="Rules"]'
-                + '[data-redirect="/ebooks/rules.html"]'
-            ];
-
-            let link = null;
-
-            for (
-                const selector
-                of selectors
-            ) {
-                link =
-                    document.querySelector(
-                        selector
-                    );
-
-                if (link) {
-                    break;
-                }
-            }
-
-            if (!link) {
-                return {
-                    ok: false,
-                    reason:
-                        'Rules link not found'
-                };
-            }
-
-            const descriptor = {
-                text:
-                    (
-                        link.textContent
-                        || ''
+    for _ in range(
+        100
+    ):
+        for (
+            frame_index,
+            frame,
+        ) in enumerate(
+            page.frames
+        ):
+            for selector in selectors:
+                try:
+                    candidates = (
+                        frame.locator(
+                            selector
+                        )
                     )
-                    .replace(/\\s+/g, ' ')
-                    .trim(),
 
-                redirect:
-                    link.getAttribute(
-                        'data-redirect'
-                    ) || '',
+                    count = (
+                        await candidates.count()
+                    )
 
-                category:
-                    link.getAttribute(
-                        'data-doccategory'
-                    ) || '',
+                except Exception:
+                    continue
 
-                val:
-                    link.getAttribute(
-                        'val'
-                    ) || ''
-            };
+                for index in range(
+                    count
+                ):
+                    candidate = (
+                        candidates.nth(index)
+                    )
 
-            link.click();
+                    try:
+                        visible = (
+                            await candidate.is_visible()
+                        )
 
-            return {
-                ok: true,
-                descriptor:
-                    descriptor
-            };
-        }
-        """)
+                    except Exception:
+                        continue
+
+                    if not visible:
+                        continue
+
+                    print(
+                        "  Rules link found "
+                        "in frame "
+                        f"#{frame_index}"
+                    )
+
+                    print(
+                        "  Selector:",
+                        selector,
+                    )
+
+                    print(
+                        "  URL before click:",
+                        page.url,
+                    )
+
+                    print(
+                        "  Performing real "
+                        "Playwright click..."
+                    )
+
+                    try:
+                        await candidate.click(
+                            timeout=10000,
+                        )
+
+                    except Exception:
+                        await candidate.click(
+                            force=True,
+                        )
+
+                    for _ in range(
+                        100
+                    ):
+                        if (
+                            is_rules_url(
+                                page.url
+                            )
+                        ):
+                            print(
+                                "  Rules URL reached:",
+                                page.url,
+                            )
+
+                            return True
+
+                        await page.wait_for_timeout(
+                            100
+                        )
+
+                    return False
+
+        await page.wait_for_timeout(
+            100
+        )
+
+    return False
 
 
 # ============================================================
-# ROBUST HOME -> ACTS & RULES -> RULES
+# OPEN RULES MODULE
 # ============================================================
-
 
 async def open_rules_module(
     page,
 ):
-    for navigation_attempt in range(
+    for attempt in range(
         1,
         NAVIGATION_RETRIES + 1,
     ):
         print()
         print("=" * 78)
 
-        print(f"RULES NAVIGATION ATTEMPT " f"{navigation_attempt}/" f"{NAVIGATION_RETRIES}")
+        print(
+            "RULES NAVIGATION ATTEMPT "
+            f"{attempt}/"
+            f"{NAVIGATION_RETRIES}"
+        )
 
         print("=" * 78)
 
-        # ====================================================
-        # ENSURE HOME
-        # ====================================================
-
-        if not is_home_url(page.url):
-            await open_home(page)
-
-        # ====================================================
-        # ACTS & RULES
-        # ====================================================
+        if not is_home_url(
+            page.url
+        ):
+            await open_home(
+                page
+            )
 
         print()
         print("=" * 78)
         print("OPENING ACTS & RULES")
         print("=" * 78)
 
-        acts_link = await find_acts_rules_link(page)
+        acts_link = (
+            await find_acts_rules_link(
+                page
+            )
+        )
 
         if acts_link is None:
-            print("Acts & Rules link not found.")
-
-            await open_home(page)
+            await open_home(
+                page
+            )
 
             continue
 
-        print("Acts & Rules link found.")
-
         print(
-            "href:",
-            repr(await acts_link.get_attribute("href")),
+            "Acts & Rules link found."
         )
 
-        print("Clicking Acts & Rules...")
+        try:
+            print(
+                "href:",
+                repr(
+                    await acts_link.get_attribute(
+                        "href"
+                    )
+                ),
+            )
+
+        except Exception:
+            pass
+
+        print(
+            "Clicking Acts & Rules..."
+        )
 
         try:
             await acts_link.click(
                 timeout=10000,
             )
 
-        except Exception as exc:
-            print(
-                "Normal click failed:",
-                repr(exc),
+        except Exception:
+            await acts_link.click(
+                force=True,
             )
 
-            try:
-                await acts_link.click(
-                    force=True,
-                )
+        ebooks_seen = False
 
-            except Exception as force_exc:
-                print(
-                    "Force click failed:",
-                    repr(force_exc),
-                )
-
-                await open_home(page)
-
-                continue
-
-        # ====================================================
-        # DETECT EBOOK PAGE QUICKLY
-        # ====================================================
-
-        ebooks_detected = False
-
-        for _ in range(120):
-            if is_ebooks_url(page.url):
-                ebooks_detected = True
+        for _ in range(
+            200
+        ):
+            if is_ebooks_url(
+                page.url
+            ):
+                ebooks_seen = True
                 break
 
-            await page.wait_for_timeout(50)
-
-        if not ebooks_detected:
-            print("eBooks page was not " "detected.")
-
-            print(
-                "Current URL:",
-                page.url,
+            await page.wait_for_timeout(
+                50
             )
 
-            await open_home(page)
+        if not ebooks_seen:
+            await open_home(
+                page
+            )
 
             continue
 
@@ -761,959 +841,707 @@ async def open_rules_module(
             page.url,
         )
 
-        # ====================================================
-        # FIND RULES IMMEDIATELY
-        # ====================================================
-
-        print()
-        print("Searching eBook navigation " "for Rules...")
-
-        (
-            rules_link_frame,
-            rules_link,
-        ) = await find_rules_link_fast(
-            page,
-            timeout_seconds=8,
+        await page.wait_for_timeout(
+            500
         )
-
-        if rules_link is None:
-            print("Rules link was not found " "or MCA returned home.")
-
-            await open_home(page)
-
-            continue
-
-        print()
-        print("RULES LINK FOUND")
-
-        print(
-            "Text:",
-            repr(clean_text(await rules_link.inner_text())),
-        )
-
-        print(
-            "data-redirect:",
-            repr(await rules_link.get_attribute("data-redirect")),
-        )
-
-        # ====================================================
-        # VERIFY DOM DIDN'T DISAPPEAR
-        # ====================================================
-
-        if is_home_url(page.url):
-            print("Rules DOM did not stay stable.")
-
-            await open_home(page)
-
-            continue
-
-        # ====================================================
-        # ATOMIC CLICK
-        # ====================================================
-
-        print("Clicking Rules atomically...")
-
-        try:
-            result = await click_rules_atomically(rules_link_frame)
-
-            print(
-                "Rules click result:",
-                result,
-            )
-
-        except Exception as exc:
-            print(
-                "Atomic Rules click failed:",
-                repr(exc),
-            )
-
-            await open_home(page)
-
-            continue
-
-        if not result.get("ok"):
-            print("Rules atomic click " "was unsuccessful.")
-
-            await open_home(page)
-
-            continue
-
-        # ====================================================
-        # WAIT FOR #DropDown_RuleAct
-        # ====================================================
-
-        rules_context = await wait_for_rules_form(
-            page,
-            timeout_seconds=15,
-        )
-
-        if rules_context is None:
-            print("Rules click did not load " "the Rules form.")
-
-            print(
-                "Current URL:",
-                page.url,
-            )
-
-            if is_home_url(page.url):
-                print("MCA returned to home. " "Retrying complete flow.")
-
-            await open_home(page)
-
-            continue
 
         print()
         print("=" * 78)
-        print("RULES MODULE LOADED")
+        print("CLICKING RULES")
         print("=" * 78)
 
-        print(
-            "Current URL:",
-            page.url,
+        clicked = (
+            await click_rules_real(
+                page
+            )
         )
 
+        if clicked:
+            frame = (
+                await wait_for_rules_form(
+                    page,
+                    timeout_seconds=20,
+                )
+            )
+
+            if frame is not None:
+                print()
+                print("=" * 78)
+                print("RULES MODULE LOADED")
+                print("=" * 78)
+
+                print(
+                    "Current URL:",
+                    page.url,
+                )
+
+                print(
+                    "Rules context:",
+                    frame.url,
+                )
+
+                print("=" * 78)
+
+                return frame
+
         print(
-            "Rules context:",
-            rules_context.url,
+            "Using direct Rules URL fallback..."
         )
 
-        print("=" * 78)
+        await page.goto(
+            RULES_DIRECT_URL,
+            wait_until="domcontentloaded",
+            timeout=60000,
+        )
 
-        return rules_context
+        frame = (
+            await wait_for_rules_form(
+                page,
+                timeout_seconds=20,
+            )
+        )
 
-    await save_debug(
-        page,
-        "rules_navigation_failed_all_retries",
+        if frame is not None:
+            return frame
+
+    raise RuntimeError(
+        "Could not load Rules module."
     )
 
-    raise RuntimeError("Could not load MCA Rules module " f"after {NAVIGATION_RETRIES} attempts.")
-
 
 # ============================================================
-# SELECT COMPANIES ACT + CLICK GO ATOMICALLY
+# WAIT FOR ACT OPTIONS
 # ============================================================
 
-
-async def select_companies_act_and_click_go(
+async def wait_for_act_options(
     page,
+    frame,
 ):
     print()
-    print("=" * 78)
-    print("SELECTING THE COMPANIES ACT, 2013")
-    print("=" * 78)
-
-    # ========================================================
-    # FIND LIVE RULES FRAME
-    # ========================================================
-
-    rules_frame = None
-
-    for attempt in range(
-        1,
-        101,
-    ):
-        if is_home_url(page.url):
-            raise RuntimeError("MCA returned to home before " "Act selection.")
-
-        for frame_index, frame in enumerate(page.frames):
-            try:
-                dropdown = frame.locator("#DropDown_RuleAct")
-
-                if await dropdown.count() == 0:
-                    continue
-
-                rules_frame = frame
-
-                print("#DropDown_RuleAct found " f"in frame #{frame_index}")
-
-                break
-
-            except Exception:
-                pass
-
-        if rules_frame is not None:
-            break
-
-        await page.wait_for_timeout(50)
-
-    if rules_frame is None:
-        raise RuntimeError("#DropDown_RuleAct disappeared " "before selection.")
-
-    # ========================================================
-    # PRINT OPTIONS
-    # ========================================================
-
-    dropdown = rules_frame.locator("#DropDown_RuleAct")
-
-    options = dropdown.locator("option")
-
-    option_count = await options.count()
-
     print(
-        "Options:",
-        option_count,
+        "Waiting for MCA to populate "
+        "Act dropdown options..."
     )
 
-    target_index = None
+    loop = (
+        asyncio.get_running_loop()
+    )
 
-    for index in range(option_count):
-        option = options.nth(index)
+    start = loop.time()
+    previous_count = None
 
-        text = clean_text(await option.inner_text())
+    while (
+        loop.time() - start
+        < ACT_OPTIONS_TIMEOUT_SECONDS
+    ):
+        result = (
+            await frame.evaluate(
+                """
+                () => {
+                    const select =
+                        document.querySelector(
+                            '#DropDown_RuleAct'
+                        );
 
-        data_id = await option.get_attribute("data-id") or ""
+                    if (!select) {
+                        return {
+                            count: 0,
+                            found: false,
+                            options: []
+                        };
+                    }
 
-        try:
-            selected = await option.evaluate("option => option.selected")
-        except Exception:
-            selected = False
+                    const options =
+                        Array.from(
+                            select.options
+                        );
 
-        print(f"  [{index}] " f"{text!r} " f"data-id={data_id!r} " f"selected={selected}")
+                    const dump =
+                        options.map(
+                            (o, index) => ({
+                                index,
 
-        if text == TARGET_ACT or data_id == TARGET_ACT_DATA_ID:
-            target_index = index
+                                text:
+                                    (
+                                        o.textContent
+                                        || ''
+                                    )
+                                    .replace(
+                                        /\\s+/g,
+                                        ' '
+                                    )
+                                    .trim(),
 
-    if target_index is None:
-        raise RuntimeError("The Companies Act, 2013 " "option was not found.")
+                                value:
+                                    o.value || '',
 
+                                dataId:
+                                    o.getAttribute(
+                                        'data-id'
+                                    ) || '',
+
+                                selected:
+                                    o.selected
+                            })
+                        );
+
+                    const target =
+                        dump.find(
+                            item =>
+                                item.dataId === 'J105_D'
+                                ||
+                                item.text ===
+                                    'The Companies Act, 2013'
+                        );
+
+                    return {
+                        count:
+                            dump.length,
+
+                        found:
+                            !!target,
+
+                        target:
+                            target || null,
+
+                        options:
+                            dump
+                    };
+                }
+                """
+            )
+        )
+
+        count = (
+            result["count"]
+        )
+
+        if (
+            count
+            != previous_count
+        ):
+            print(
+                "  Current option count:",
+                count,
+            )
+
+            previous_count = count
+
+        if result["found"]:
+            print(
+                "  Companies Act option "
+                "is now available."
+            )
+
+            return result
+
+        await page.wait_for_timeout(
+            250
+        )
+
+    raise RuntimeError(
+        "Act dropdown options "
+        "did not load."
+    )
+
+
+# ============================================================
+# SELECT COMPANIES ACT
+# ============================================================
+
+async def select_companies_act(
+    page,
+    frame,
+):
+    result = (
+        await wait_for_act_options(
+            page,
+            frame,
+        )
+    )
+
+    print()
+    print(
+        "Act options:"
+    )
+
+    for option in result[
+        "options"
+    ]:
+        print(
+            f"  [{option['index']}] "
+            f"{option['text']!r} "
+            f"value="
+            f"{option['value']!r} "
+            f"data-id="
+            f"{option['dataId']!r} "
+            f"selected="
+            f"{option['selected']}"
+        )
+
+    target = (
+        result["target"]
+    )
+
+    print()
     print(
         "Target option index:",
-        target_index,
+        target["index"],
     )
 
-    # ========================================================
-    # ONE JS OPERATION:
-    #
-    # - select J105_D
-    # - fire input/change
-    # - invoke enableclickGoButton if available
-    # - immediately find #clickGo
-    # - immediately click it
-    # ========================================================
+    print(
+        "Target text:",
+        target["text"],
+    )
 
-    result = await rules_frame.evaluate("""
-        () => {
-            const select =
-                document.querySelector(
-                    '#DropDown_RuleAct'
-                );
+    print(
+        "Target data-id:",
+        target["dataId"],
+    )
 
-            if (!select) {
-                return {
-                    ok: false,
-                    stage: 'dropdown',
-                    reason:
-                        '#DropDown_RuleAct not found'
-                };
-            }
+    dropdown = (
+        frame.locator(
+            "#DropDown_RuleAct"
+        )
+    )
 
-            const options =
-                Array.from(
-                    select.options
-                );
+    selected = (
+        await dropdown.select_option(
+            index=target["index"],
+        )
+    )
 
-            let targetIndex =
-                options.findIndex(
-                    option =>
-                        (
-                            option.getAttribute(
-                                'data-id'
-                            ) || ''
-                        ) === 'J105_D'
-                );
+    print(
+        "Playwright select_option result:",
+        selected,
+    )
 
-            if (targetIndex < 0) {
-                targetIndex =
-                    options.findIndex(
-                        option =>
-                            (
-                                option.textContent
-                                || ''
-                            )
-                            .replace(
-                                /\\s+/g,
-                                ' '
-                            )
-                            .trim()
-                            ===
-                            'The Companies Act, 2013'
+    verification = (
+        await frame.evaluate(
+            """
+            () => {
+                const s =
+                    document.querySelector(
+                        '#DropDown_RuleAct'
                     );
-            }
 
-            if (targetIndex < 0) {
+                const o =
+                    s.options[
+                        s.selectedIndex
+                    ];
+
                 return {
-                    ok: false,
-                    stage: 'selection',
-                    reason:
-                        'Companies Act option not found'
-                };
-            }
+                    index:
+                        s.selectedIndex,
 
-            select.selectedIndex =
-                targetIndex;
-
-            for (
-                let i = 0;
-                i < options.length;
-                i++
-            ) {
-                options[i].selected =
-                    i === targetIndex;
-            }
-
-            try {
-                select.dispatchEvent(
-                    new Event(
-                        'input',
-                        {
-                            bubbles: true
-                        }
-                    )
-                );
-            }
-            catch (error) {}
-
-            try {
-                select.dispatchEvent(
-                    new Event(
-                        'change',
-                        {
-                            bubbles: true
-                        }
-                    )
-                );
-            }
-            catch (error) {}
-
-            try {
-                if (
-                    typeof window
-                        .enableclickGoButton
-                    === 'function'
-                ) {
-                    window
-                        .enableclickGoButton();
-                }
-            }
-            catch (error) {}
-
-            const selected =
-                select.options[
-                    select.selectedIndex
-                ];
-
-            const go =
-                document.querySelector(
-                    '#clickGo'
-                );
-
-            if (!go) {
-                return {
-                    ok: false,
-                    stage: 'go',
-                    reason:
-                        '#clickGo not found',
-
-                    selectedText:
-                        selected
-                        ? (
-                            selected.textContent
+                    text:
+                        (
+                            o.textContent
                             || ''
                         )
                         .replace(
                             /\\s+/g,
                             ' '
                         )
-                        .trim()
-                        : '',
+                        .trim(),
 
-                    selectedDataId:
-                        selected
-                        ? (
-                            selected.getAttribute(
-                                'data-id'
-                            )
-                            || ''
-                        )
-                        : ''
+                    dataId:
+                        o.getAttribute(
+                            'data-id'
+                        ) || ''
                 };
             }
-
-            try {
-                go.disabled = false;
-            }
-            catch (error) {}
-
-            try {
-                go.removeAttribute(
-                    'disabled'
-                );
-            }
-            catch (error) {}
-
-            const descriptor = {
-                selectedText:
-                    selected
-                    ? (
-                        selected.textContent
-                        || ''
-                    )
-                    .replace(
-                        /\\s+/g,
-                        ' '
-                    )
-                    .trim()
-                    : '',
-
-                selectedDataId:
-                    selected
-                    ? (
-                        selected.getAttribute(
-                            'data-id'
-                        )
-                        || ''
-                    )
-                    : '',
-
-                selectedIndex:
-                    select.selectedIndex,
-
-                goText:
-                    (
-                        go.textContent
-                        || ''
-                    )
-                    .replace(
-                        /\\s+/g,
-                        ' '
-                    )
-                    .trim(),
-
-                goDisabled:
-                    !!go.disabled,
-
-                goDisabledAttr:
-                    go.getAttribute(
-                        'disabled'
-                    ),
-
-                goDisabled1:
-                    go.getAttribute(
-                        'disabled1'
-                    )
-            };
-
-            go.click();
-
-            return {
-                ok: true,
-                descriptor:
-                    descriptor
-            };
-        }
-        """)
-
-    print(
-        "Atomic Act + Go result:",
-        result,
+            """
+        )
     )
 
-    if not result or not result.get("ok"):
-        raise RuntimeError(
-            "Could not atomically select " "Companies Act and click Go: " f"{result}"
-        )
-
-    descriptor = result.get("descriptor") or {}
+    print()
+    print(
+        "ACT SELECTED"
+    )
 
     print(
-        "Selected:",
-        descriptor.get("selectedText"),
+        "Selected index:",
+        verification["index"],
+    )
+
+    print(
+        "Selected text:",
+        verification["text"],
     )
 
     print(
         "Selected data-id:",
-        descriptor.get("selectedDataId"),
+        verification["dataId"],
+    )
+
+
+# ============================================================
+# CLICK GO
+# ============================================================
+
+async def click_go_button(
+    page,
+    frame,
+):
+    print()
+    print("=" * 78)
+    print("CLICKING GO")
+    print("=" * 78)
+
+    go = (
+        frame.locator(
+            "#clickGo"
+        )
+    )
+
+    await go.wait_for(
+        state="attached",
+        timeout=30000,
     )
 
     print(
-        "Go text:",
-        descriptor.get("goText"),
+        "Go visible:",
+        await go.is_visible(),
     )
 
     print(
         "Go disabled:",
-        descriptor.get("goDisabled"),
+        await go.is_disabled(),
     )
 
     print(
         "Go disabled1:",
-        descriptor.get("goDisabled1"),
+        repr(
+            await go.get_attribute(
+                "disabled1"
+            )
+        ),
     )
 
-    # ========================================================
-    # REACQUIRE LIVE RESULT CONTEXT
-    # ========================================================
+    await page.wait_for_timeout(
+        500
+    )
 
+    print(
+        "Clicking Go with "
+        "real Playwright click..."
+    )
+
+    try:
+        await go.click(
+            timeout=15000,
+        )
+
+        print(
+            "Go clicked normally."
+        )
+
+    except Exception:
+        await go.click(
+            force=True,
+        )
+
+        print(
+            "Go clicked forcefully."
+        )
+
+
+# ============================================================
+# WAIT FOR RULE RESULTS
+# ============================================================
+
+async def wait_for_rules_results(
+    page,
+):
     print()
-    print("Waiting for Rules results...")
+    print(
+        "Waiting for Rules results..."
+    )
 
-    result_context = None
+    loop = (
+        asyncio.get_running_loop()
+    )
 
-    for attempt in range(
-        1,
-        121,
+    start = loop.time()
+
+    while (
+        loop.time() - start
+        < GO_RESULTS_TIMEOUT_SECONDS
     ):
-        if is_home_url(page.url):
-            raise RuntimeError("MCA returned to home " "after clicking Go.")
-
-        for frame_index, frame in enumerate(page.frames):
+        for (
+            frame_index,
+            frame,
+        ) in enumerate(
+            page.frames
+        ):
             try:
-                table = frame.locator("#rulesContainer")
+                table = (
+                    frame.locator(
+                        "#rulesContainer"
+                    )
+                )
 
-                if await table.count() == 0:
+                if (
+                    await table.count()
+                    == 0
+                ):
                     continue
 
-                result_context = frame
+                rows = (
+                    frame.locator(
+                        "#rulesContainer tbody tr"
+                    )
+                )
 
-                row_count = await frame.locator("#rulesContainer tbody tr").count()
+                row_count = (
+                    await rows.count()
+                )
 
-                print("  Results detected " f"in frame #{frame_index}: " f"{row_count} row(s)")
+                useful = 0
 
-                break
+                for index in range(
+                    row_count
+                ):
+                    try:
+                        if (
+                            await rows.nth(
+                                index
+                            ).locator(
+                                ".ruleLink"
+                            ).count()
+                            > 0
+                        ):
+                            useful += 1
+
+                    except Exception:
+                        pass
+
+                print(
+                    "  Results detected "
+                    "in frame "
+                    f"#{frame_index}: "
+                    f"{row_count} row(s), "
+                    f"{useful} ruleLink row(s)"
+                )
+
+                if useful:
+                    print()
+                    print(
+                        "Rules table loaded."
+                    )
+
+                    print(
+                        "Initial displayed rows:",
+                        row_count,
+                    )
+
+                    return frame
 
             except Exception:
                 pass
 
-        if result_context is not None:
-            break
+        await page.wait_for_timeout(
+            250
+        )
 
-        if attempt % 10 == 0:
-            print(f"  Still waiting " f"{attempt}/120...")
-
-        await page.wait_for_timeout(100)
-
-    if result_context is None:
-        raise RuntimeError("#rulesContainer did not appear " "after clicking Go.")
-
-    # ========================================================
-    # WAIT FOR REAL .ruleLink ROWS
-    # ========================================================
-
-    rows = result_context.locator("#rulesContainer tbody tr")
-
-    for attempt in range(
-        1,
-        101,
-    ):
-        row_count = await rows.count()
-
-        useful_rows = 0
-
-        for index in range(row_count):
-            try:
-                if await rows.nth(index).locator(".ruleLink").count() > 0:
-                    useful_rows += 1
-            except Exception:
-                pass
-
-        if useful_rows:
-            print("Rules table loaded.")
-
-            print(
-                "Initial displayed rows:",
-                row_count,
-            )
-
-            print(
-                "Rows containing .ruleLink:",
-                useful_rows,
-            )
-
-            return result_context
-
-        await page.wait_for_timeout(100)
-
-    raise RuntimeError("#rulesContainer appeared, " "but no .ruleLink data rows " "were loaded.")
+    raise RuntimeError(
+        "Rules results did not load."
+    )
 
 
 # ============================================================
-# FIND DATATABLE LENGTH DROPDOWN
+# SELECT ACT + GO
 # ============================================================
 
-
-async def find_length_dropdown(
-    rules_context,
+async def select_companies_act_and_click_go(
+    page,
 ):
-    selectors = [
-        ('select[name="rulesContainer_length"]'),
-        ('select[aria-controls="rulesContainer"]'),
-        ("#rulesContainer_length select"),
-        (".dataTables_length " 'select[aria-controls="rulesContainer"]'),
-        (".dataTables_length select"),
-        ("select.custom-select" '[aria-controls="rulesContainer"]'),
-    ]
+    print()
+    print("=" * 78)
 
-    for attempt in range(
-        1,
-        31,
-    ):
-        for selector in selectors:
-            try:
-                locator = rules_context.locator(selector)
+    print(
+        "SELECTING THE COMPANIES ACT, 2013"
+    )
 
-                count = await locator.count()
+    print("=" * 78)
 
-            except Exception:
-                continue
+    frame = (
+        await wait_for_rules_form(
+            page,
+            timeout_seconds=30,
+        )
+    )
 
-            if count:
-                print("  Length selector " "matched:")
+    if frame is None:
+        raise RuntimeError(
+            "Act dropdown not found."
+        )
 
-                print(f"    {selector}")
+    await select_companies_act(
+        page,
+        frame,
+    )
 
-                print(f"    count={count}")
+    await click_go_button(
+        page,
+        frame,
+    )
 
-            for index in range(count):
-                candidate = locator.nth(index)
-
-                try:
-                    visible = await candidate.is_visible()
-                except Exception:
-                    visible = False
-
-                if visible:
-                    return candidate
-
-        await asyncio.sleep(0.5)
-
-    return None
+    return (
+        await wait_for_rules_results(
+            page
+        )
+    )
 
 
 # ============================================================
-# SELECT ALL RULE TABLE ROWS
+# SELECT ALL 54 ROWS
 # ============================================================
-
 
 async def select_all_rules(
-    rules_context,
+    frame,
 ):
     print()
     print("=" * 78)
     print("SELECTING ALL RULE ROWS")
     print("=" * 78)
 
-    rows = rules_context.locator("#rulesContainer tbody tr")
-
-    before_count = await rows.count()
+    rows = (
+        frame.locator(
+            "#rulesContainer tbody tr"
+        )
+    )
 
     print(
         "Current displayed rows:",
-        before_count,
+        await rows.count(),
     )
 
-    dropdown = await find_length_dropdown(rules_context)
+    selectors = [
+        (
+            'select['
+            'name="rulesContainer_length"'
+            ']'
+        ),
+        (
+            'select['
+            'aria-controls="rulesContainer"'
+            ']'
+        ),
+        (
+            '.dataTables_length select'
+        ),
+    ]
 
-    # ========================================================
-    # NORMAL DROPDOWN
-    # ========================================================
+    dropdown = None
 
-    if dropdown is not None:
-        print("DataTables length dropdown found.")
+    for selector in selectors:
+        candidate = (
+            frame.locator(
+                selector
+            )
+        )
 
-        try:
-            options = dropdown.locator("option")
-
-            print("Options:")
-
-            for index in range(await options.count()):
-                option = options.nth(index)
-
-                value = await option.get_attribute("value")
-
-                text = clean_text(await option.inner_text())
-
-                print(f"  {value!r} " f"=> {text!r}")
-
-        except Exception:
-            pass
-
-        selected = False
-
-        try:
-            await dropdown.select_option(value="-1")
-
-            print("Selected value=-1.")
-
-            selected = True
-
-        except Exception as exc:
+        if (
+            await candidate.count()
+            > 0
+        ):
             print(
-                "Selecting value=-1 " "failed:",
-                repr(exc),
+                "  Length selector matched:"
             )
 
-        if not selected:
-            try:
-                await dropdown.select_option(label="All")
+            print(
+                "   ",
+                selector,
+            )
 
-                print("Selected label='All'.")
+            dropdown = (
+                candidate.first
+            )
 
-                selected = True
+            break
 
-            except Exception as exc:
-                print(
-                    "Selecting label='All' " "failed:",
-                    repr(exc),
+    if dropdown is None:
+        raise RuntimeError(
+            "Rows-per-page dropdown "
+            "not found."
+        )
+
+    print(
+        "DataTables length "
+        "dropdown found."
+    )
+
+    options = (
+        dropdown.locator(
+            "option"
+        )
+    )
+
+    print(
+        "Options:"
+    )
+
+    for index in range(
+        await options.count()
+    ):
+        option = (
+            options.nth(index)
+        )
+
+        print(
+            " ",
+            repr(
+                await option.get_attribute(
+                    "value"
                 )
+            ),
+            "=>",
+            repr(
+                clean_text(
+                    await option.inner_text()
+                )
+            ),
+        )
 
-        if selected:
-            await asyncio.sleep(1.5)
-
-    # ========================================================
-    # CHECK ROWS
-    # ========================================================
-
-    after_dropdown_count = await rows.count()
-
-    print(
-        "Rows after dropdown attempt:",
-        after_dropdown_count,
+    await dropdown.select_option(
+        value="-1"
     )
 
-    # ========================================================
-    # DATATABLE API FALLBACK
-    # ========================================================
-
-    if dropdown is None or (before_count <= 50 and after_dropdown_count <= before_count):
-        print()
-        print("Trying DataTables " "JavaScript API fallback...")
-
-        try:
-            api_result = await rules_context.evaluate("""
-                    () => {
-                        try {
-                            if (
-                                typeof window.jQuery
-                                === 'undefined'
-                            ) {
-                                return {
-                                    ok: false,
-                                    reason:
-                                        'jQuery missing'
-                                };
-                            }
-
-                            const $ =
-                                window.jQuery;
-
-                            if (
-                                !$.fn
-                                ||
-                                !$.fn.DataTable
-                            ) {
-                                return {
-                                    ok: false,
-                                    reason:
-                                        'DataTables missing'
-                                };
-                            }
-
-                            if (
-                                !$.fn.DataTable
-                                    .isDataTable(
-                                        '#rulesContainer'
-                                    )
-                            ) {
-                                return {
-                                    ok: false,
-                                    reason:
-                                        'rulesContainer '
-                                        + 'is not a DataTable'
-                                };
-                            }
-
-                            const table =
-                                $(
-                                    '#rulesContainer'
-                                )
-                                .DataTable();
-
-                            const before =
-                                table.rows({
-                                    search: 'applied'
-                                }).count();
-
-                            table
-                                .page
-                                .len(-1)
-                                .draw(false);
-
-                            return {
-                                ok: true,
-                                before:
-                                    before,
-                                pageLength:
-                                    table.page.len()
-                            };
-                        }
-                        catch (error) {
-                            return {
-                                ok: false,
-                                reason:
-                                    String(error)
-                            };
-                        }
-                    }
-                    """)
-
-        except Exception as exc:
-            api_result = {
-                "ok": False,
-                "reason": repr(exc),
-            }
-
-        print(
-            "DataTables API result:",
-            api_result,
-        )
-
-        if api_result.get("ok"):
-            await asyncio.sleep(1.5)
-
-    # ========================================================
-    # MANUAL CHANGE EVENT FALLBACK
-    # ========================================================
-
-    current_count = await rows.count()
-
-    if dropdown is not None and current_count <= before_count:
-        print()
-        print("Trying manual dropdown " "change event...")
-
-        try:
-            await dropdown.evaluate("""
-                element => {
-                    element.value = '-1';
-
-                    element.dispatchEvent(
-                        new Event(
-                            'change',
-                            {
-                                bubbles: true
-                            }
-                        )
-                    );
-                }
-                """)
-
-            await asyncio.sleep(1.5)
-
-        except Exception as exc:
-            print(
-                "Manual dropdown change " "failed:",
-                repr(exc),
-            )
-
-    # ========================================================
-    # FINAL INFO
-    # ========================================================
-
-    final_count = await rows.count()
-
-    print()
     print(
-        "Final displayed rule rows:",
-        final_count,
+        "Selected value=-1 / All."
     )
 
-    try:
-        table_info = await rules_context.evaluate("""
-                () => {
-                    try {
-                        if (
-                            window.jQuery
-                            &&
-                            jQuery.fn
-                            &&
-                            jQuery.fn.DataTable
-                            &&
-                            jQuery.fn.DataTable
-                                .isDataTable(
-                                    '#rulesContainer'
-                                )
-                        ) {
-                            const table =
-                                jQuery(
-                                    '#rulesContainer'
-                                )
-                                .DataTable();
+    await asyncio.sleep(
+        1.5
+    )
 
-                            return {
-                                total:
-                                    table.rows()
-                                    .count(),
-
-                                filtered:
-                                    table.rows({
-                                        search: 'applied'
-                                    }).count(),
-
-                                pageLength:
-                                    table.page.len(),
-
-                                pageInfo:
-                                    table.page.info()
-                            };
-                        }
-
-                        return null;
-                    }
-                    catch (error) {
-                        return {
-                            error:
-                                String(error)
-                        };
-                    }
-                }
-                """)
-
-        print(
-            "DataTables info:",
-            table_info,
-        )
-
-    except Exception as exc:
-        print(
-            "Could not read " "DataTables info:",
-            repr(exc),
-        )
-
-    if final_count == 0:
-        raise RuntimeError("No rule rows available " "after selecting All.")
-
-    print("=" * 78)
-
-    return final_count
+    print(
+        "Final displayed rows:",
+        await rows.count(),
+    )
 
 
 # ============================================================
 # RULE POPUP LOCATOR
 # ============================================================
 
-
 def rule_popup_locator(
-    rules_context,
+    frame,
 ):
-    return rules_context.locator(
+    return frame.locator(
         (
             ".resaultContentContainer "
             ".contentContainer "
             "ol.rulesListPopContainer "
             "li.pop a.rulePopup, "
+
             ".resultContentContainer "
             ".contentContainer "
             "ol.rulesListPopContainer "
             "li.pop a.rulePopup, "
+
             "ol.rulesListPopContainer "
             "li.pop a.rulePopup"
         )
@@ -1721,79 +1549,202 @@ def rule_popup_locator(
 
 
 # ============================================================
-# DOCUMENT TITLE
+# TABLE ROW METADATA
 # ============================================================
 
-
-async def get_document_title(
-    rules_context,
+async def extract_table_row_metadata(
+    row,
 ):
-    selectors = [
-        "#docRightTitleDefault h1",
-        ".docRightTitleDefault h1",
-        "h1#docRightTitleDefault",
-        "#docRightTitleDefault",
-    ]
+    """
+    Extract these columns from the selected table row:
 
-    for selector in selectors:
+    Rules
+    Rule Contains
+    Notification Date
+
+    The site may use td positions instead of explicit
+    classes, so position fallback is supported.
+    """
+
+    cells = (
+        row.locator(
+            "td"
+        )
+    )
+
+    cell_count = (
+        await cells.count()
+    )
+
+    texts = []
+
+    for index in range(
+        cell_count
+    ):
         try:
-            locator = rules_context.locator(selector)
-
-            if await locator.count() == 0:
-                continue
-
-            text = clean_text(await locator.first.inner_text())
-
-            if text:
-                return text
+            text = clean_text(
+                await cells.nth(
+                    index
+                ).inner_text()
+            )
 
         except Exception:
-            pass
+            text = ""
 
-    return "Rules"
+        texts.append(
+            text
+        )
+
+    # --------------------------------------------------------
+    # Based on screenshot:
+    #
+    # td 0 = Rules
+    # td 1 = Rule Contains
+    # td 2 = Notification Date
+    # td 3 = arrow
+    # --------------------------------------------------------
+
+    rules_name = (
+        texts[0]
+        if len(texts) > 0
+        else ""
+    )
+
+    rule_contains = (
+        texts[1]
+        if len(texts) > 1
+        else ""
+    )
+
+    notification_date = (
+        texts[2]
+        if len(texts) > 2
+        else ""
+    )
+
+    # --------------------------------------------------------
+    # If first cell contains the .ruleLink, prefer its
+    # full title instead of potentially truncated visible text.
+    # --------------------------------------------------------
+
+    try:
+        rule_link = (
+            row.locator(
+                ".ruleLink"
+            ).first
+        )
+
+        link_text = clean_text(
+            await rule_link.inner_text()
+        )
+
+        if link_text:
+            rules_name = (
+                link_text
+            )
+
+    except Exception:
+        pass
+
+    return {
+        "rules":
+            rules_name,
+
+        "rule_contains":
+            rule_contains,
+
+        "notification_date":
+            notification_date,
+
+        "cells":
+            texts,
+    }
 
 
 # ============================================================
-# OPEN ONE TABLE ROW
+# OPEN RULE TABLE ROW
 # ============================================================
-
 
 async def open_rule_table_row(
-    rules_context,
+    frame,
     row_index,
 ):
-    rows = rules_context.locator("#rulesContainer tbody tr")
+    rows = (
+        frame.locator(
+            "#rulesContainer tbody tr"
+        )
+    )
 
-    row_count = await rows.count()
+    row_count = (
+        await rows.count()
+    )
 
-    if row_index >= row_count:
-        raise RuntimeError(f"Rule row " f"{row_index + 1} " "no longer exists.")
+    if (
+        row_index
+        >= row_count
+    ):
+        raise RuntimeError(
+            "Table row disappeared."
+        )
 
-    row = rows.nth(row_index)
+    row = (
+        rows.nth(
+            row_index
+        )
+    )
 
-    rule_link = row.locator(".ruleLink")
+    metadata = (
+        await extract_table_row_metadata(
+            row
+        )
+    )
 
-    if await rule_link.count() == 0:
-        raise RuntimeError(f"No .ruleLink found " f"in table row " f"{row_index + 1}.")
-
-    rule_link = rule_link.first
-
-    link_text = clean_text(await rule_link.inner_text())
+    rule_link = (
+        row.locator(
+            ".ruleLink"
+        ).first
+    )
 
     print()
     print("#" * 78)
 
-    print(f"RULE TABLE ROW " f"{row_index + 1}/" f"{row_count}")
+    print(
+        f"RULE TABLE ROW "
+        f"{row_index + 1}/"
+        f"{row_count}"
+    )
 
     print("#" * 78)
 
     print(
-        "ruleLink:",
-        repr(link_text),
+        "Rules:",
+        repr(
+            metadata["rules"]
+        ),
+    )
+
+    print(
+        "Rule Contains:",
+        repr(
+            metadata["rule_contains"]
+        ),
+    )
+
+    print(
+        "Notification Date:",
+        repr(
+            metadata["notification_date"]
+        ),
+    )
+
+    print(
+        "Raw cells:",
+        metadata["cells"],
     )
 
     try:
         await rule_link.scroll_into_view_if_needed()
+
     except Exception:
         pass
 
@@ -1807,20 +1758,19 @@ async def open_rule_table_row(
             force=True,
         )
 
-    popup_links = rule_popup_locator(rules_context)
+    popup_links = (
+        rule_popup_locator(
+            frame
+        )
+    )
 
     await popup_links.first.wait_for(
         state="visible",
         timeout=30000,
     )
 
-    popup_count = await popup_links.count()
-
-    document_title = await get_document_title(rules_context)
-
-    print(
-        "docRightTitleDefault:",
-        repr(document_title),
+    popup_count = (
+        await popup_links.count()
     )
 
     print(
@@ -1829,7 +1779,7 @@ async def open_rule_table_row(
     )
 
     return (
-        document_title,
+        metadata,
         popup_count,
     )
 
@@ -1838,218 +1788,348 @@ async def open_rule_table_row(
 # ACTIVE MODAL
 # ============================================================
 
-
 async def get_active_modal(
-    rules_context,
+    frame,
 ):
-    selectors = [
-        ".modal.show .modal-dialog.modal-sm",
-        ".modal-dialog.modal-sm:visible",
-        ".modal-dialog.modal-sm",
-    ]
+    candidates = (
+        frame.locator(
+            ".modal-dialog.modal-sm"
+        )
+    )
 
-    for selector in selectors:
+    for index in range(
+        await candidates.count()
+    ):
+        candidate = (
+            candidates.nth(index)
+        )
+
         try:
-            locator = rules_context.locator(selector)
-
-            count = await locator.count()
+            if (
+                await candidate.is_visible()
+            ):
+                return candidate
 
         except Exception:
-            continue
+            pass
 
-        for index in range(count):
-            modal = locator.nth(index)
+    return None
 
-            try:
-                if await modal.is_visible():
-                    return modal
 
-            except Exception:
-                pass
+async def wait_active_modal(
+    frame,
+):
+    for _ in range(
+        80
+    ):
+        modal = (
+            await get_active_modal(
+                frame
+            )
+        )
+
+        if modal is not None:
+            return modal
+
+        await asyncio.sleep(
+            0.1
+        )
 
     return None
 
 
 # ============================================================
-# OPEN PDF DOWNLOAD DROPDOWN
+# OPEN PDF DROPDOWN
 # ============================================================
 
-
 async def open_pdf_dropdown(
-    rules_context,
+    page,
+    frame,
     modal,
 ):
-    # Prefer dropdown inside active modal.
-    area = modal.locator(".rulespdfDownload")
+    dropdown = (
+        modal.locator(
+            "#mypdfDropdown"
+        )
+    )
 
-    if await area.count() == 0:
-        area = rules_context.locator(".rulespdfDownload:visible")
+    if (
+        await dropdown.count()
+        == 0
+    ):
+        dropdown = (
+            frame.locator(
+                "#mypdfDropdown"
+            )
+        )
 
-    if await area.count() == 0:
-        raise RuntimeError(".rulespdfDownload not found.")
+    if (
+        await dropdown.count()
+        > 0
+    ):
+        radios = (
+            dropdown.first.locator(
+                'input[type="radio"]'
+            )
+        )
 
-    area = area.first
+        if (
+            await radios.count()
+            > 0
+        ):
+            return (
+                dropdown.first
+            )
+
+    selectors = [
+        (
+            ".rulespdfDownload "
+            ".dropdown-toggle"
+        ),
+        ".rulespdfDownload button",
+        ".rulespdfDownload a",
+        ".rulespdfDownload",
+    ]
 
     clicked = False
 
-    for selector in [
-        ".dropdown-toggle",
-        "button",
-        "a",
-    ]:
-        try:
-            candidate = area.locator(selector)
+    for selector in selectors:
+        candidate = (
+            modal.locator(
+                selector
+            )
+        )
 
-            if await candidate.count() == 0:
-                continue
+        if (
+            await candidate.count()
+            == 0
+        ):
+            candidate = (
+                frame.locator(
+                    selector
+                )
+            )
 
-            await candidate.first.click(force=True)
+        for index in range(
+            await candidate.count()
+        ):
+            item = (
+                candidate.nth(index)
+            )
 
-            clicked = True
+            try:
+                if (
+                    await item.is_visible()
+                ):
+                    await item.click(
+                        force=True
+                    )
+
+                    clicked = True
+
+                    break
+
+            except Exception:
+                pass
+
+        if clicked:
             break
 
-        except Exception:
-            pass
-
-    if not clicked:
-        try:
-            await area.click(force=True)
-
-            clicked = True
-        except Exception:
-            pass
-
-    # Prefer dropdown scoped to modal.
-    modal_dropdown = modal.locator("#mypdfDropdown")
-
-    if await modal_dropdown.count() > 0:
-        dropdown = modal_dropdown.first
-    else:
-        dropdown = rules_context.locator("#mypdfDropdown").first
-
-    await dropdown.wait_for(
-        state="attached",
-        timeout=10000,
+    await page.wait_for_timeout(
+        200
     )
 
-    return dropdown
+    dropdown = (
+        modal.locator(
+            "#mypdfDropdown"
+        )
+    )
+
+    if (
+        await dropdown.count()
+        == 0
+    ):
+        dropdown = (
+            frame.locator(
+                "#mypdfDropdown"
+            )
+        )
+
+    if (
+        await dropdown.count()
+        == 0
+    ):
+        raise RuntimeError(
+            "#mypdfDropdown not found."
+        )
+
+    return (
+        dropdown.first
+    )
 
 
 # ============================================================
-# RADIO OPTION NAME
+# CURRENT RULE RADIO
 # ============================================================
 
-
-async def get_radio_option_name(
-    rules_context,
+async def find_current_rule_radio(
     dropdown,
+):
+    """
+    Only download:
+
+        Current Rule
+
+    Do NOT download:
+        Current Rule with Notes
+        Current Rule with Highlights
+    """
+
+    selectors = [
+        (
+            'input[type="radio"]'
+            '[value="Current Rule"]'
+        ),
+        (
+            'input[type="radio"]'
+            '[aria-label="Current Rule"]'
+        ),
+        (
+            'input[type="radio"]'
+            '#rulesDownloadLinks'
+        ),
+        (
+            'input.rulesDownloadLinks'
+            '[type="radio"]'
+        ),
+    ]
+
+    for selector in selectors:
+        locator = (
+            dropdown.locator(
+                selector
+            )
+        )
+
+        if (
+            await locator.count()
+            > 0
+        ):
+            return (
+                locator.first
+            )
+
+    return None
+
+
+# ============================================================
+# DOWNLOAD EVENT
+# ============================================================
+
+async def wait_for_download_event(
+    page,
+    trigger,
+    timeout_seconds,
+):
+    loop = (
+        asyncio.get_running_loop()
+    )
+
+    future = (
+        loop.create_future()
+    )
+
+    def on_download(
+        download,
+    ):
+        if (
+            not future.done()
+        ):
+            future.set_result(
+                download
+            )
+
+    page.on(
+        "download",
+        on_download,
+    )
+
+    try:
+        await trigger()
+
+        try:
+            return (
+                await asyncio.wait_for(
+                    future,
+                    timeout=timeout_seconds,
+                )
+            )
+
+        except asyncio.TimeoutError:
+            return None
+
+    finally:
+        try:
+            page.remove_listener(
+                "download",
+                on_download,
+            )
+
+        except Exception:
+            pass
+
+
+# ============================================================
+# CLICK HIDDEN CURRENT RULE RADIO
+# ============================================================
+
+async def trigger_current_rule(
     radio,
 ):
     """
-    Preference:
+    MCA radio is hidden.
 
-    1. label[for=id]
-    2. closest label
-    3. nearby parent text
-    4. useful attributes
+    Real Playwright click may fail because the input itself
+    isn't visible.
+
+    DOM click correctly executes the site's handler.
     """
 
-    radio_id = await radio.get_attribute("id") or ""
+    return await radio.evaluate(
+        """
+        element => {
+            if (element.disabled) {
+                return {
+                    ok: false,
+                    reason: 'disabled'
+                };
+            }
 
-    if radio_id:
-        try:
-            label = rules_context.locator(f'label[for="{radio_id}"]')
+            element.click();
 
-            if await label.count() > 0:
-                text = clean_text(await label.first.inner_text())
+            return {
+                ok: true,
+                method: 'dom-click',
+                checked: !!element.checked,
 
-                if text:
-                    return text
+                value:
+                    element.getAttribute(
+                        'value'
+                    ) || '',
 
-        except Exception:
-            pass
-
-    try:
-        text = clean_text(await radio.evaluate("""
-                element => {
-                    const label =
-                        element.closest(
-                            'label'
-                        );
-
-                    if (label) {
-                        return (
-                            label.innerText
-                            || ''
-                        );
-                    }
-
-                    const parent =
-                        element.parentElement;
-
-                    if (parent) {
-                        return (
-                            parent.innerText
-                            || ''
-                        );
-                    }
-
-                    return '';
-                }
-                """))
-
-        if text:
-            return text
-
-    except Exception:
-        pass
-
-    for attribute in [
-        "data-name",
-        "data-title",
-        "title",
-        "value",
-        "name",
-        "id",
-    ]:
-        try:
-            value = clean_text(await radio.get_attribute(attribute) or "")
-
-            if value:
-                return value
-
-        except Exception:
-            pass
-
-    return "PDF"
-
-
-# ============================================================
-# ORIGINAL DOWNLOAD NAME
-# ============================================================
-
-
-def get_original_download_name(
-    download,
-):
-    """
-    Playwright's suggested_filename should
-    be authoritative for the original
-    downloaded filename.
-    """
-
-    suggested = clean_text(download.suggested_filename or "")
-
-    if suggested:
-        return suggested
-
-    return "document.pdf"
+                ariaLabel:
+                    element.getAttribute(
+                        'aria-label'
+                    ) || ''
+            };
+        }
+        """
+    )
 
 
 # ============================================================
 # CLOSE MODAL
 # ============================================================
-
 
 async def close_modal(
     page,
@@ -2058,77 +2138,209 @@ async def close_modal(
     selectors = [
         "button.close",
         ".close",
-        'button[data-dismiss="modal"]',
-        'button[data-bs-dismiss="modal"]',
+        '[data-dismiss="modal"]',
+        '[data-bs-dismiss="modal"]',
     ]
 
     for selector in selectors:
-        try:
-            control = modal.locator(selector)
+        candidate = (
+            modal.locator(
+                selector
+            )
+        )
 
-            if await control.count() == 0:
-                continue
+        for index in range(
+            await candidate.count()
+        ):
+            item = (
+                candidate.nth(index)
+            )
 
-            if not await control.first.is_visible():
-                continue
+            try:
+                if (
+                    await item.is_visible()
+                ):
+                    await item.click(
+                        force=True
+                    )
 
-            await control.first.click(force=True)
+                    await page.wait_for_timeout(
+                        250
+                    )
 
-            await page.wait_for_timeout(300)
+                    return
 
-            return
-
-        except Exception:
-            pass
+            except Exception:
+                pass
 
     try:
-        await page.keyboard.press("Escape")
+        await page.keyboard.press(
+            "Escape"
+        )
 
-        await page.wait_for_timeout(300)
+        await page.wait_for_timeout(
+            250
+        )
 
     except Exception:
         pass
 
 
 # ============================================================
-# DOWNLOAD EVERY PDF FOR ONE rulePopup
+# DOWNLOAD ONE INDIVIDUAL RULE
 # ============================================================
 
-
-async def download_rule_popup_pdfs(
+async def download_individual_rule(
     page,
-    rules_context,
+    frame,
     table_row_number,
-    document_title,
+    table_metadata,
     popup_index,
     manifest_rows,
 ):
-    # Reacquire links each time.
-    popup_links = rule_popup_locator(rules_context)
+    popup_links = (
+        rule_popup_locator(
+            frame
+        )
+    )
 
-    popup_count = await popup_links.count()
+    popup_count = (
+        await popup_links.count()
+    )
 
-    if popup_index >= popup_count:
-        raise RuntimeError("rulePopup index disappeared.")
+    if (
+        popup_index
+        >= popup_count
+    ):
+        raise RuntimeError(
+            "rulePopup disappeared."
+        )
 
-    popup_link = popup_links.nth(popup_index)
+    popup_link = (
+        popup_links.nth(
+            popup_index
+        )
+    )
 
-    rule_title = clean_text(await popup_link.inner_text())
+    rule_title = clean_text(
+        await popup_link.inner_text()
+    )
+
+    rules_name = clean_text(
+        table_metadata[
+            "rules"
+        ]
+    )
+
+    rule_contains = clean_text(
+        table_metadata[
+            "rule_contains"
+        ]
+    )
+
+    notification_date = clean_text(
+        table_metadata[
+            "notification_date"
+        ]
+    )
+
+    # ========================================================
+    # BUILD DESTINATION BEFORE DOWNLOADING
+    # ========================================================
+
+    filename = (
+        build_filename(
+            rules_name,
+            rule_contains,
+            notification_date,
+            rule_title,
+        )
+    )
+
+    destination = (
+        DOWNLOAD_DIR
+        / filename
+    )
 
     print()
     print("-" * 78)
 
-    print(f"RULE POPUP " f"{popup_index + 1}/" f"{popup_count}")
+    print(
+        f"RULE POPUP "
+        f"{popup_index + 1}/"
+        f"{popup_count}"
+    )
 
     print("-" * 78)
 
     print(
-        "Rule:",
-        repr(rule_title),
+        "Individual Rule:",
+        repr(
+            rule_title
+        ),
     )
+
+    print(
+        "Target filename:"
+    )
+
+    print(
+        " ",
+        filename,
+    )
+
+    # ========================================================
+    # DUPLICATE CHECK BEFORE OPENING MODAL/DOWNLOAD
+    # ========================================================
+
+    if (
+        destination.exists()
+    ):
+        print(
+            "  ALREADY EXISTS - SKIPPING DOWNLOAD"
+        )
+
+        manifest_rows.append(
+            {
+                "table_row":
+                    table_row_number,
+
+                "rules":
+                    rules_name,
+
+                "rule_contains":
+                    rule_contains,
+
+                "notification_date":
+                    notification_date,
+
+                "rule_title":
+                    rule_title,
+
+                "original_pdf":
+                    "",
+
+                "saved_filename":
+                    filename,
+
+                "status":
+                    "already-exists",
+            }
+        )
+
+        save_manifest(
+            manifest_rows
+        )
+
+        return
+
+    # ========================================================
+    # OPEN INDIVIDUAL RULE MODAL
+    # ========================================================
 
     try:
         await popup_link.scroll_into_view_if_needed()
+
     except Exception:
         pass
 
@@ -2142,255 +2354,273 @@ async def download_rule_popup_pdfs(
             force=True,
         )
 
-    # ========================================================
-    # WAIT FOR MODAL
-    # ========================================================
-
-    modal = None
-
-    for _ in range(60):
-        modal = await get_active_modal(rules_context)
-
-        if modal is not None:
-            break
-
-        await page.wait_for_timeout(100)
-
-    if modal is None:
-        raise RuntimeError(f"Modal did not open " f"for {rule_title!r}.")
-
-    print("  Modal opened.")
-
-    # ========================================================
-    # OPEN PDF DROPDOWN
-    # ========================================================
-
-    dropdown = await open_pdf_dropdown(
-        rules_context,
-        modal,
+    modal = (
+        await wait_active_modal(
+            frame
+        )
     )
 
-    radios = dropdown.locator('input[type="radio"]')
-
-    radio_count = await radios.count()
-
-    if radio_count == 0:
-        # Fallback global.
-        radios = rules_context.locator("#mypdfDropdown " 'input[type="radio"]')
-
-        radio_count = await radios.count()
+    if (
+        modal is None
+    ):
+        raise RuntimeError(
+            "Rule modal did not open."
+        )
 
     print(
-        "  PDF options:",
-        radio_count,
+        "  Modal opened."
     )
 
-    if radio_count == 0:
-        raise RuntimeError("No PDF radio buttons " "were found.")
-
-    # ========================================================
-    # EACH RADIO OPTION
-    # ========================================================
-
-    for radio_index in range(radio_count):
-        # Reacquire modal/dropdown because
-        # Bootstrap may close/re-render.
-        modal = await get_active_modal(rules_context)
-
-        if modal is None:
-            raise RuntimeError("Modal disappeared while " "processing PDF options.")
-
-        dropdown = await open_pdf_dropdown(
-            rules_context,
+    dropdown = (
+        await open_pdf_dropdown(
+            page,
+            frame,
             modal,
         )
+    )
 
-        radios = dropdown.locator('input[type="radio"]')
-
-        current_count = await radios.count()
-
-        if current_count == 0:
-            radios = rules_context.locator("#mypdfDropdown " 'input[type="radio"]')
-
-            current_count = await radios.count()
-
-        if radio_index >= current_count:
-            print(
-                "  Radio index disappeared:",
-                radio_index,
-            )
-
-            continue
-
-        radio = radios.nth(radio_index)
-
-        option_name = await get_radio_option_name(
-            rules_context,
-            dropdown,
-            radio,
+    radios = (
+        dropdown.locator(
+            'input[type="radio"]'
         )
+    )
 
-        print()
-        print(f"  PDF option " f"{radio_index + 1}/" f"{current_count}: " f"{option_name!r}")
+    print(
+        "  Total PDF options:",
+        await radios.count(),
+    )
 
-        # ====================================================
-        # EXPECT REAL BROWSER DOWNLOAD
-        # ====================================================
+    # Print options for diagnostics.
+    for index in range(
+        await radios.count()
+    ):
+        radio = (
+            radios.nth(index)
+        )
 
         try:
-            async with page.expect_download(
-                timeout=DOWNLOAD_TIMEOUT,
-            ) as download_info:
-
-                await radio.click(force=True)
-
-            download = await download_info.value
-
-        except PlaywrightTimeoutError:
-            print("    ERROR: radio click " "did not trigger a browser " "download.")
-
-            manifest_rows.append(
-                {
-                    "table_row": table_row_number,
-                    "rule_group": document_title,
-                    "rule_title": rule_title,
-                    "pdf_option": option_name,
-                    "original_pdf": "",
-                    "saved_filename": "",
-                    "status": "ERROR: no download triggered",
-                }
+            value = (
+                await radio.get_attribute(
+                    "value"
+                )
             )
 
-            save_manifest(manifest_rows)
+        except Exception:
+            value = None
 
-            continue
+        try:
+            aria_label = (
+                await radio.get_attribute(
+                    "aria-label"
+                )
+            )
 
-        # ====================================================
-        # ORIGINAL FILENAME
-        # ====================================================
-
-        original_pdf = get_original_download_name(download)
+        except Exception:
+            aria_label = None
 
         print(
-            "    Original PDF:",
-            original_pdf,
+            f"    [{index + 1}] "
+            f"value={value!r} "
+            f"aria-label={aria_label!r}"
         )
 
-        # ====================================================
-        # DUPLICATE CHECK
-        # ====================================================
+    current_rule_radio = (
+        await find_current_rule_radio(
+            dropdown
+        )
+    )
 
-        if original_pdf_already_downloaded(original_pdf):
-            print("    DUPLICATE - skipping.")
-
-            try:
-                await download.delete()
-            except Exception:
-                pass
-
-            manifest_rows.append(
-                {
-                    "table_row": table_row_number,
-                    "rule_group": document_title,
-                    "rule_title": rule_title,
-                    "pdf_option": option_name,
-                    "original_pdf": original_pdf,
-                    "saved_filename": "",
-                    "status": "duplicate-skipped",
-                }
-            )
-
-            save_manifest(manifest_rows)
-
-            continue
-
-        # ====================================================
-        # BUILD FINAL NAME
-        # ====================================================
-
-        filename = build_filename(
-            document_title,
-            rule_title,
-            option_name,
-            original_pdf,
+    if (
+        current_rule_radio
+        is None
+    ):
+        raise RuntimeError(
+            "Current Rule radio "
+            "was not found."
         )
 
-        destination = DOWNLOAD_DIR / filename
+    # ========================================================
+    # DOWNLOAD CURRENT RULE
+    # ========================================================
 
-        if destination.exists():
-            print("    Exact destination " "already exists - skipping.")
-
-            try:
-                await download.delete()
-            except Exception:
-                pass
-
-            manifest_rows.append(
-                {
-                    "table_row": table_row_number,
-                    "rule_group": document_title,
-                    "rule_title": rule_title,
-                    "pdf_option": option_name,
-                    "original_pdf": original_pdf,
-                    "saved_filename": destination.name,
-                    "status": "destination-exists",
-                }
+    async def trigger():
+        result = (
+            await trigger_current_rule(
+                current_rule_radio
             )
-
-            save_manifest(manifest_rows)
-
-            continue
-
-        await download.save_as(str(destination))
+        )
 
         print(
-            "    SAVED:",
-            destination.name,
+            "  Current Rule trigger:",
+            result,
+        )
+
+    print(
+        "  Downloading Current Rule..."
+    )
+
+    download = (
+        await wait_for_download_event(
+            page,
+            trigger,
+            DOWNLOAD_WAIT_SECONDS,
+        )
+    )
+
+    if (
+        download is None
+    ):
+        print(
+            "  ERROR: Current Rule "
+            "did not trigger a download."
         )
 
         manifest_rows.append(
             {
-                "table_row": table_row_number,
-                "rule_group": document_title,
-                "rule_title": rule_title,
-                "pdf_option": option_name,
-                "original_pdf": original_pdf,
-                "saved_filename": destination.name,
-                "status": "downloaded",
+                "table_row":
+                    table_row_number,
+
+                "rules":
+                    rules_name,
+
+                "rule_contains":
+                    rule_contains,
+
+                "notification_date":
+                    notification_date,
+
+                "rule_title":
+                    rule_title,
+
+                "original_pdf":
+                    "",
+
+                "saved_filename":
+                    filename,
+
+                "status":
+                    (
+                        "ERROR: "
+                        "Current Rule download timeout"
+                    ),
             }
         )
 
-        save_manifest(manifest_rows)
+        save_manifest(
+            manifest_rows
+        )
 
-        await page.wait_for_timeout(300)
-
-    # ========================================================
-    # CLOSE CURRENT MODAL
-    # ========================================================
-
-    modal = await get_active_modal(rules_context)
-
-    if modal is not None:
         await close_modal(
             page,
             modal,
         )
 
+        return
+
+    original_pdf = clean_text(
+        download.suggested_filename
+        or ""
+    )
+
+    print(
+        "  MCA original filename:",
+        repr(
+            original_pdf
+        ),
+    )
+
+    # ========================================================
+    # SAVE USING OUR LOGICAL FILENAME
+    # ========================================================
+
+    await download.save_as(
+        str(
+            destination
+        )
+    )
+
+    print(
+        "  SAVED:"
+    )
+
+    print(
+        " ",
+        destination.name,
+    )
+
+    manifest_rows.append(
+        {
+            "table_row":
+                table_row_number,
+
+            "rules":
+                rules_name,
+
+            "rule_contains":
+                rule_contains,
+
+            "notification_date":
+                notification_date,
+
+            "rule_title":
+                rule_title,
+
+            "original_pdf":
+                original_pdf,
+
+            "saved_filename":
+                destination.name,
+
+            "status":
+                "downloaded",
+        }
+    )
+
+    save_manifest(
+        manifest_rows
+    )
+
+    await close_modal(
+        page,
+        modal,
+    )
+
+    await page.wait_for_timeout(
+        250
+    )
+
 
 # ============================================================
-# PROCESS ALL RULE TABLE ROWS
+# PROCESS ALL RULES
 # ============================================================
-
 
 async def process_all_rules(
     page,
-    rules_context,
+    frame,
 ):
-    manifest_rows = []
+    manifest_rows = (
+        load_manifest()
+    )
 
-    rows = rules_context.locator("#rulesContainer tbody tr")
+    if (
+        manifest_rows
+    ):
+        print(
+            "Loaded existing manifest entries:",
+            len(
+                manifest_rows
+            ),
+        )
 
-    total_rows = await rows.count()
+    rows = (
+        frame.locator(
+            "#rulesContainer tbody tr"
+        )
+    )
+
+    total_rows = (
+        await rows.count()
+    )
 
     print()
     print("=" * 78)
@@ -2411,45 +2641,74 @@ async def process_all_rules(
 
     total_popups = 0
 
-    for row_index in range(total_rows):
+    for row_index in range(
+        total_rows
+    ):
         try:
             (
-                document_title,
+                metadata,
                 popup_count,
-            ) = await open_rule_table_row(
-                rules_context,
-                row_index,
+            ) = (
+                await open_rule_table_row(
+                    frame,
+                    row_index,
+                )
             )
 
-            total_popups += popup_count
+            total_popups += (
+                popup_count
+            )
 
-            for popup_index in range(popup_count):
+            for popup_index in range(
+                popup_count
+            ):
                 try:
-                    await download_rule_popup_pdfs(
+                    await download_individual_rule(
                         page=page,
-                        rules_context=rules_context,
-                        table_row_number=(row_index + 1),
-                        document_title=(document_title),
-                        popup_index=(popup_index),
-                        manifest_rows=(manifest_rows),
+                        frame=frame,
+                        table_row_number=(
+                            row_index + 1
+                        ),
+                        table_metadata=(
+                            metadata
+                        ),
+                        popup_index=(
+                            popup_index
+                        ),
+                        manifest_rows=(
+                            manifest_rows
+                        ),
                     )
 
                 except Exception as exc:
                     print()
                     print(
-                        "  ERROR processing " "rulePopup:",
+                        "  ERROR processing "
+                        "individual rule:",
                         repr(exc),
                     )
 
                     await save_debug(
                         page,
-                        (f"row_" f"{row_index + 1}_" f"popup_" f"{popup_index + 1}"),
+                        (
+                            f"row_"
+                            f"{row_index + 1}_"
+                            f"rule_"
+                            f"{popup_index + 1}"
+                        ),
                     )
 
                     try:
-                        modal = await get_active_modal(rules_context)
+                        modal = (
+                            await get_active_modal(
+                                frame
+                            )
+                        )
 
-                        if modal is not None:
+                        if (
+                            modal
+                            is not None
+                        ):
                             await close_modal(
                                 page,
                                 modal,
@@ -2458,27 +2717,65 @@ async def process_all_rules(
                     except Exception:
                         pass
 
-            await page.wait_for_timeout(400)
+            await page.wait_for_timeout(
+                300
+            )
 
         except Exception as exc:
             print()
             print(
-                f"ERROR processing " f"table row " f"{row_index + 1}:",
+                "ERROR processing "
+                f"table row "
+                f"{row_index + 1}:",
                 repr(exc),
             )
 
             await save_debug(
                 page,
-                (f"rule_table_row_" f"{row_index + 1}_error"),
+                (
+                    f"table_row_"
+                    f"{row_index + 1}_error"
+                ),
             )
 
-    save_manifest(manifest_rows)
+    save_manifest(
+        manifest_rows
+    )
 
-    downloaded = sum(1 for item in manifest_rows if (item.get("status") == "downloaded"))
+    downloaded = sum(
+        1
+        for row in manifest_rows
+        if (
+            row.get(
+                "status"
+            )
+            == "downloaded"
+        )
+    )
 
-    duplicates = sum(1 for item in manifest_rows if (item.get("status") == "duplicate-skipped"))
+    already_exists = sum(
+        1
+        for row in manifest_rows
+        if (
+            row.get(
+                "status"
+            )
+            == "already-exists"
+        )
+    )
 
-    errors = sum(1 for item in manifest_rows if (item.get("status", "").startswith("ERROR")))
+    errors = sum(
+        1
+        for row in manifest_rows
+        if (
+            row.get(
+                "status",
+                ""
+            ).startswith(
+                "ERROR"
+            )
+        )
+    )
 
     print()
     print("=" * 78)
@@ -2486,23 +2783,23 @@ async def process_all_rules(
     print("=" * 78)
 
     print(
-        "Rule table rows:",
+        "Table rows:",
         total_rows,
     )
 
     print(
-        "Rule popup entries:",
+        "Individual rules:",
         total_popups,
     )
 
     print(
-        "PDFs downloaded:",
+        "Downloaded:",
         downloaded,
     )
 
     print(
-        "Duplicates skipped:",
-        duplicates,
+        "Already existed:",
+        already_exists,
     )
 
     print(
@@ -2524,17 +2821,18 @@ async def process_all_rules(
 
 
 # ============================================================
-# KEEP BROWSER OPEN
+# KEEP PROCESS ALIVE
 # ============================================================
-
 
 async def keep_browser_open():
     print()
     print("=" * 78)
-    print("BROWSER WILL REMAIN OPEN")
+    print("PROCESS WILL REMAIN RUNNING")
     print("=" * 78)
 
-    print("Press Ctrl+C to exit.")
+    print(
+        "Press Ctrl+C to exit."
+    )
 
     await asyncio.Event().wait()
 
@@ -2543,56 +2841,108 @@ async def keep_browser_open():
 # MAIN
 # ============================================================
 
-
 async def main():
     async with async_playwright() as p:
 
-        browser = await p.chromium.launch(
-            headless=True,
-            args=[
-                "--start-maximized",
-            ],
+        # ====================================================
+        # FIREFOX ONLY
+        #
+        # Chromium receives HTTP 403 from MCA
+        # on this server.
+        # ====================================================
+
+        browser = (
+            await p.firefox.launch(
+                headless=True,
+            )
         )
 
-        context = await browser.new_context(
-            viewport=None,
-            accept_downloads=True,
+        context = (
+            await browser.new_context(
+                accept_downloads=True,
+                viewport={
+                    "width": 1920,
+                    "height": 1080,
+                },
+                locale="en-US",
+            )
         )
 
-        page = await context.new_page()
+        page = (
+            await context.new_page()
+        )
 
-        page.set_default_timeout(DEFAULT_TIMEOUT)
+        page.set_default_timeout(
+            DEFAULT_TIMEOUT
+        )
+
+        # ----------------------------------------------------
+        # DOCUMENT RESPONSE LOGGING
+        # ----------------------------------------------------
+
+        async def log_response(
+            response,
+        ):
+            try:
+                if (
+                    "mca.gov.in"
+                    in response.url
+                    and
+                    response.request.resource_type
+                    == "document"
+                ):
+                    print(
+                        "[DOCUMENT]",
+                        response.status,
+                        response.url,
+                    )
+
+            except Exception:
+                pass
+
+        page.on(
+            "response",
+            log_response,
+        )
 
         try:
+
             # =================================================
             # 1. HOME
             # =================================================
 
-            await open_home(page)
+            await open_home(
+                page
+            )
 
             # =================================================
-            # 2. ROBUST RULES NAVIGATION
+            # 2. RULES MODULE
             # =================================================
 
-            await open_rules_module(page)
+            await open_rules_module(
+                page
+            )
 
             # =================================================
-            # 3. SELECT COMPANIES ACT + GO ATOMICALLY
-            #
-            # IMPORTANT:
-            # This returns a FRESH result context.
+            # 3. COMPANIES ACT + GO
             # =================================================
 
-            rules_context = await select_companies_act_and_click_go(page)
+            rules_context = (
+                await select_companies_act_and_click_go(
+                    page
+                )
+            )
 
             # =================================================
-            # 4. SHOW ALL RULES
+            # 4. SELECT ALL 54 ROWS
             # =================================================
 
-            await select_all_rules(rules_context)
+            await select_all_rules(
+                rules_context
+            )
 
             # =================================================
-            # 5. DOWNLOAD
+            # 5. DOWNLOAD CURRENT RULE FOR EACH INDIVIDUAL RULE
             # =================================================
 
             await process_all_rules(
@@ -2601,7 +2951,7 @@ async def main():
             )
 
             # =================================================
-            # 6. KEEP OPEN
+            # 6. STAY ALIVE
             # =================================================
 
             await keep_browser_open()
@@ -2634,13 +2984,17 @@ async def main():
 
 
 # ============================================================
-# ENTRY POINT
+# ENTRY
 # ============================================================
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(
+            main()
+        )
 
     except KeyboardInterrupt:
         print()
-        print("Script stopped.")
+        print(
+            "Script stopped."
+        )
