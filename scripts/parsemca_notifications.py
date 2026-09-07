@@ -4,17 +4,11 @@ import asyncio
 import base64
 import csv
 import re
+import time
 from pathlib import Path
-from urllib.parse import (
-    urljoin,
-    urlparse,
-    parse_qs,
-    unquote,
-)
+from urllib.parse import unquote
 
-from playwright.async_api import (
-    async_playwright,
-)
+from playwright.async_api import async_playwright
 
 # ============================================================
 # CONFIGURATION
@@ -52,18 +46,44 @@ HEADLESS = True
 DEFAULT_TIMEOUT = 30000
 
 NAVIGATION_RETRIES = 10
-
 ACT_OPTIONS_TIMEOUT_SECONDS = 60
+RESULTS_TIMEOUT_SECONDS = 60
+ALL_RESULTS_TIMEOUT_SECONDS = 60
 
-# Each Go strategy gets this long.
-GO_ATTEMPT_WAIT_SECONDS = 25
+# ============================================================
+# DOWNLOAD / RETRY CONFIGURATION
+# ============================================================
 
-DOWNLOAD_RETRY_ATTEMPTS = 3
-DOWNLOAD_RETRY_DELAY_SECONDS = 2
+DOWNLOAD_RETRY_ATTEMPTS = 5
+
+# Normal exponential backoff:
+# attempt 1 failure -> 2s
+# attempt 2 failure -> 4s
+# attempt 3 failure -> 8s
+# attempt 4 failure -> 16s
+RETRY_BASE_DELAY_SECONDS = 2
+
+# HTTP 403 gets a more conservative delay:
+# attempt 1 -> 10s
+# attempt 2 -> 20s
+# attempt 3 -> 40s
+# attempt 4 -> 80s
+HTTP_403_BASE_DELAY_SECONDS = 10
+
+# Delay between separate documents
+INTER_DOWNLOAD_DELAY_SECONDS = 5
 
 DIRECT_HTTP_TIMEOUT_MS = 120000
 
-POPUP_WAIT_SECONDS = 20
+DEBUG_NETWORK = True
+DEBUG_TABLE = True
+
+
+# ============================================================
+# GLOBAL REQUEST TRACKING
+# ============================================================
+
+notification_request_urls = []
 
 
 # ============================================================
@@ -83,22 +103,34 @@ MANIFEST_FIELDS = [
 
 
 def load_manifest():
+
     if not MANIFEST_FILE.exists():
         return []
 
     try:
+
         with MANIFEST_FILE.open(
             "r",
             newline="",
             encoding="utf-8-sig",
         ) as file:
+
             return list(csv.DictReader(file))
 
-    except Exception:
+    except Exception as exc:
+
+        print(
+            "[DEBUG] Manifest load failed:",
+            repr(exc),
+        )
+
         return []
 
 
-def save_manifest(rows):
+def save_manifest(
+    rows,
+):
+
     with MANIFEST_FILE.open(
         "w",
         newline="",
@@ -112,6 +144,7 @@ def save_manifest(rows):
         )
 
         writer.writeheader()
+
         writer.writerows(rows)
 
 
@@ -119,6 +152,7 @@ def upsert_manifest_row(
     manifest_rows,
     row_data,
 ):
+
     document_id = clean_text(
         row_data.get(
             "document_id",
@@ -126,7 +160,7 @@ def upsert_manifest_row(
         )
     )
 
-    notification_date = clean_text(
+    date = clean_text(
         row_data.get(
             "notification_date",
             "",
@@ -141,19 +175,20 @@ def upsert_manifest_row(
     )
 
     for index, existing in enumerate(manifest_rows):
-        existing_document_id = clean_text(
+
+        existing_id = clean_text(
             existing.get(
                 "document_id",
                 "",
             )
         )
 
-        same = False
+        if document_id and existing_id:
 
-        if document_id and existing_document_id:
-            same = document_id == existing_document_id
+            same = document_id == existing_id
 
         else:
+
             same = (
                 clean_text(
                     existing.get(
@@ -161,7 +196,7 @@ def upsert_manifest_row(
                         "",
                     )
                 )
-                == notification_date
+                == date
                 and clean_text(
                     existing.get(
                         "particulars",
@@ -172,6 +207,7 @@ def upsert_manifest_row(
             )
 
         if same:
+
             manifest_rows[index] = row_data
 
             save_manifest(manifest_rows)
@@ -184,11 +220,14 @@ def upsert_manifest_row(
 
 
 # ============================================================
-# TEXT / FILENAME HELPERS
+# TEXT HELPERS
 # ============================================================
 
 
-def clean_text(value):
+def clean_text(
+    value,
+):
+
     value = value or ""
 
     value = value.replace(
@@ -208,6 +247,7 @@ def clean_text(value):
 def sanitize_filename_component(
     value,
 ):
+
     value = clean_text(value)
 
     value = re.sub(
@@ -231,6 +271,7 @@ def truncate_utf8(
     value,
     max_bytes,
 ):
+
     raw = value.encode("utf-8")
 
     if len(raw) <= max_bytes:
@@ -239,10 +280,13 @@ def truncate_utf8(
     raw = raw[:max_bytes]
 
     while raw:
+
         try:
+
             return raw.decode("utf-8").rstrip()
 
         except UnicodeDecodeError:
+
             raw = raw[:-1]
 
     return ""
@@ -251,6 +295,7 @@ def truncate_utf8(
 def sortable_notification_date(
     value,
 ):
+
     value = clean_text(value)
 
     patterns = [
@@ -259,6 +304,7 @@ def sortable_notification_date(
     ]
 
     for pattern in patterns:
+
         match = re.fullmatch(
             pattern,
             value,
@@ -279,28 +325,17 @@ def sortable_notification_date(
 
 
 def strip_size_suffix(
-    particulars,
+    value,
 ):
-    """
-    Example:
 
-    G.S.R. 725(E)-.... Rules, 2026. | 804KB
+    value = clean_text(value)
 
-    becomes:
-
-    G.S.R. 725(E)-.... Rules, 2026.
-    """
-
-    text = clean_text(particulars)
-
-    text = re.sub(
+    return re.sub(
         (r"\s*\|\s*" r"\d+(?:\.\d+)?\s*" r"(?:KB|MB|GB)" r"\s*$"),
         "",
-        text,
+        value,
         flags=re.I,
-    )
-
-    return text.strip()
+    ).strip()
 
 
 def build_filename(
@@ -308,21 +343,23 @@ def build_filename(
     particulars,
     max_bytes=245,
 ):
-    date_part = sortable_notification_date(notification_date)
 
-    date_part = sanitize_filename_component(date_part)
+    date = sortable_notification_date(notification_date)
 
-    title = strip_size_suffix(particulars)
+    date = sanitize_filename_component(date)
 
-    title = sanitize_filename_component(title)
+    particulars = strip_size_suffix(particulars)
 
-    prefix = f"{date_part} - "
+    particulars = sanitize_filename_component(particulars)
+
+    prefix = f"{date} - "
 
     suffix = ".pdf"
 
-    filename = prefix + title + suffix
+    filename = prefix + particulars + suffix
 
     if len(filename.encode("utf-8")) <= max_bytes:
+
         return filename
 
     available = max_bytes - len(prefix.encode("utf-8")) - len(suffix.encode("utf-8"))
@@ -332,12 +369,40 @@ def build_filename(
         available,
     )
 
-    title = truncate_utf8(
-        title,
+    particulars = truncate_utf8(
+        particulars,
         available,
     )
 
-    return prefix + title + suffix
+    return prefix + particulars + suffix
+
+
+# ============================================================
+# MCA DOCUMENT URL
+# ============================================================
+
+
+def encode_document_id(
+    document_id,
+):
+
+    return base64.b64encode(str(document_id).encode("utf-8")).decode("ascii")
+
+
+def build_document_url(
+    document_id,
+    doc_category="Notifications",
+):
+
+    encoded = encode_document_id(document_id)
+
+    return (
+        "https://www.mca.gov.in/"
+        "bin/ebook/dms/getdocument"
+        f"?doc={encoded}"
+        f"&docCategory={doc_category}"
+        "&type=open"
+    )
 
 
 # ============================================================
@@ -345,7 +410,10 @@ def build_filename(
 # ============================================================
 
 
-def is_home_url(url):
+def is_home_url(
+    url,
+):
+
     return bool(
         re.search(
             r"/home\.html(?:$|[?#])",
@@ -355,7 +423,10 @@ def is_home_url(url):
     )
 
 
-def is_ebooks_url(url):
+def is_ebooks_url(
+    url,
+):
+
     return bool(
         re.search(
             r"/acts-rules/ebooks\.html(?:$|[?#])",
@@ -365,48 +436,17 @@ def is_ebooks_url(url):
     )
 
 
-def is_notifications_url(url):
+def is_notifications_url(
+    url,
+):
+
     return bool(
         re.search(
-            (r"/acts-rules/ebooks/" r"notifications\.html" r"(?:$|[?#])"),
+            (r"/acts-rules/" r"ebooks/" r"notifications\.html" r"(?:$|[?#])"),
             url or "",
             re.I,
         )
     )
-
-
-def decode_document_id_from_url(
-    url,
-):
-    """
-    Example:
-
-    doc=Njc1OTQ4NjUx
-
-    ->
-
-    675948651
-    """
-
-    try:
-        query = parse_qs(urlparse(url).query)
-
-        encoded = (query.get("doc") or [""])[0]
-
-        if not encoded:
-            return ""
-
-        encoded += "=" * (-len(encoded) % 4)
-
-        decoded = base64.b64decode(encoded).decode(
-            "utf-8",
-            errors="ignore",
-        )
-
-        return clean_text(decoded)
-
-    except Exception:
-        return ""
 
 
 # ============================================================
@@ -415,44 +455,43 @@ def decode_document_id_from_url(
 
 
 def looks_like_pdf(
-    data,
+    body,
 ):
-    if not data:
+
+    if not body:
         return False
 
-    return data.find(b"%PDF-") >= 0
+    return b"%PDF-" in body
 
 
 def normalize_pdf_bytes(
-    data,
+    body,
 ):
-    position = data.find(b"%PDF-")
+
+    position = body.find(b"%PDF-")
 
     if position < 0:
-        return data
+        return body
 
-    return data[position:]
+    return body[position:]
 
 
 def filename_from_content_disposition(
     headers,
 ):
+
     if not headers:
         return ""
 
-    disposition = ""
-
-    for key, value in headers.items():
-        if key.lower() == "content-disposition":
-            disposition = value or ""
-            break
+    disposition = clean_text(
+        headers.get(
+            "content-disposition",
+            "",
+        )
+    )
 
     if not disposition:
         return ""
-
-    # --------------------------------------------------------
-    # filename*=UTF-8''name.pdf
-    # --------------------------------------------------------
 
     match = re.search(
         (r"filename\*\s*=\s*" r"(?:UTF-8''|utf-8'')?" r"([^;]+)"),
@@ -461,13 +500,8 @@ def filename_from_content_disposition(
     )
 
     if match:
-        value = match.group(1).strip().strip("\"'")
 
-        return clean_text(unquote(value))
-
-    # --------------------------------------------------------
-    # filename="name.pdf"
-    # --------------------------------------------------------
+        return clean_text(unquote(match.group(1).strip().strip("\"'")))
 
     match = re.search(
         r'filename\s*=\s*"([^"]+)"',
@@ -476,11 +510,8 @@ def filename_from_content_disposition(
     )
 
     if match:
-        return clean_text(match.group(1))
 
-    # --------------------------------------------------------
-    # filename=name.pdf
-    # --------------------------------------------------------
+        return clean_text(match.group(1))
 
     match = re.search(
         r"filename\s*=\s*([^;]+)",
@@ -489,6 +520,7 @@ def filename_from_content_disposition(
     )
 
     if match:
+
         return clean_text(match.group(1).strip().strip("\"'"))
 
     return ""
@@ -499,10 +531,21 @@ def filename_from_content_disposition(
 # ============================================================
 
 
+def debug(
+    message,
+):
+
+    print(
+        f"[DEBUG] {message}",
+        flush=True,
+    )
+
+
 async def save_debug(
     page,
     name,
 ):
+
     safe_name = re.sub(
         r"[^A-Za-z0-9_-]+",
         "_",
@@ -510,6 +553,7 @@ async def save_debug(
     )
 
     try:
+
         screenshot = DEBUG_DIR / f"{safe_name}.png"
 
         await page.screenshot(
@@ -518,26 +562,335 @@ async def save_debug(
         )
 
         print(
-            "  Screenshot:",
+            "[DEBUG] Screenshot:",
             screenshot.resolve(),
         )
 
-    except Exception:
-        pass
+    except Exception as exc:
+
+        print(
+            "[DEBUG] Screenshot failed:",
+            repr(exc),
+        )
 
     for frame_index, frame in enumerate(page.frames):
+
         try:
+
             html = await frame.content()
 
-            html_file = DEBUG_DIR / (f"{safe_name}_" f"frame_{frame_index}.html")
+            path = DEBUG_DIR / (f"{safe_name}_" f"frame_{frame_index}.html")
 
-            html_file.write_text(
+            path.write_text(
                 html,
                 encoding="utf-8",
             )
 
-        except Exception:
-            pass
+            print(
+                "[DEBUG] HTML:",
+                path.resolve(),
+            )
+
+        except Exception as exc:
+
+            print(
+                "[DEBUG] HTML save failed:",
+                repr(exc),
+            )
+
+
+# ============================================================
+# FAST DATATABLE STATE
+# ============================================================
+
+
+async def get_notification_table_state(
+    frame,
+):
+
+    return await frame.evaluate("""
+        () => {
+
+            const table =
+                document.querySelector(
+                    '#notificationCircularResultTable'
+                );
+
+            const tbody =
+                table
+                ? table.querySelector(
+                    'tbody'
+                )
+                : null;
+
+            const rows =
+                tbody
+                ? Array.from(
+                    tbody.querySelectorAll(
+                        ':scope > tr'
+                    )
+                )
+                : [];
+
+            const realRows =
+                rows.filter(
+                    row => {
+
+                        const text =
+                            (
+                                row.innerText
+                                || ''
+                            )
+                            .replace(
+                                /\\s+/g,
+                                ' '
+                            )
+                            .trim();
+
+                        if (!text) {
+                            return false;
+                        }
+
+                        const lower =
+                            text.toLowerCase();
+
+                        if (
+                            lower.includes(
+                                'no data available'
+                            )
+                            ||
+                            lower.includes(
+                                'no matching records'
+                            )
+                            ||
+                            lower.includes(
+                                'processing...'
+                            )
+                            ||
+                            lower.includes(
+                                'loading...'
+                            )
+                        ) {
+
+                            return false;
+                        }
+
+                        return (
+                            row.querySelectorAll(
+                                'td'
+                            ).length
+                            > 0
+                        );
+                    }
+                );
+
+            const notificationLinks =
+                table
+                    ? table.querySelectorAll(
+                        'a.notifications.dmslink'
+                    ).length
+                    : 0;
+
+            const dmsLinks =
+                table
+                    ? table.querySelectorAll(
+                        'a.dmslink'
+                    ).length
+                    : 0;
+
+            const lengthSelect =
+                document.querySelector(
+                    'select[name="notificationCircularResultTable_length"]'
+                )
+                ||
+                document.querySelector(
+                    'select[aria-controls="notificationCircularResultTable"]'
+                );
+
+            const info =
+                document.querySelector(
+                    '#notificationCircularResultTable_info'
+                );
+
+            const processing =
+                document.querySelector(
+                    '#notificationCircularResultTable_processing'
+                );
+
+            const processingVisible =
+                processing
+                ? (
+                    getComputedStyle(
+                        processing
+                    ).display !== 'none'
+                    &&
+                    getComputedStyle(
+                        processing
+                    ).visibility !== 'hidden'
+                )
+                : false;
+
+            let dataTableAvailable =
+                false;
+
+            let dataTableRows =
+                null;
+
+            let dataTablePageLength =
+                null;
+
+            let dataTableInfo =
+                null;
+
+            try {
+
+                if (
+                    window.jQuery
+                    &&
+                    jQuery.fn
+                    &&
+                    jQuery.fn.dataTable
+                    &&
+                    jQuery.fn.dataTable.isDataTable(
+                        '#notificationCircularResultTable'
+                    )
+                ) {
+
+                    dataTableAvailable =
+                        true;
+
+                    const dt =
+                        jQuery(
+                            '#notificationCircularResultTable'
+                        )
+                        .DataTable();
+
+                    dataTableRows =
+                        dt.rows().count();
+
+                    dataTablePageLength =
+                        dt.page.len();
+
+                    dataTableInfo =
+                        dt.page.info();
+                }
+
+            }
+            catch (error) {
+
+                dataTableInfo = {
+                    error:
+                        String(error)
+                };
+            }
+
+            return {
+
+                tableFound:
+                    !!table,
+
+                rawRows:
+                    rows.length,
+
+                realRows:
+                    realRows.length,
+
+                notificationLinks:
+                    notificationLinks,
+
+                dmsLinks:
+                    dmsLinks,
+
+                lengthValue:
+                    lengthSelect
+                    ? lengthSelect.value
+                    : null,
+
+                infoText:
+                    info
+                    ? (
+                        info.innerText
+                        || ''
+                    )
+                    .replace(
+                        /\\s+/g,
+                        ' '
+                    )
+                    .trim()
+                    : '',
+
+                processingFound:
+                    !!processing,
+
+                processingVisible:
+                    processingVisible,
+
+                processingText:
+                    processing
+                    ? (
+                        processing.innerText
+                        || ''
+                    )
+                    .replace(
+                        /\\s+/g,
+                        ' '
+                    )
+                    .trim()
+                    : '',
+
+                dataTableAvailable:
+                    dataTableAvailable,
+
+                dataTableRows:
+                    dataTableRows,
+
+                dataTablePageLength:
+                    dataTablePageLength,
+
+                dataTableInfo:
+                    dataTableInfo
+            };
+        }
+        """)
+
+
+def print_table_state(
+    prefix,
+    state,
+):
+
+    print(
+        (
+            f"{prefix}"
+            f"table={state.get('tableFound')} "
+            f"rawRows={state.get('rawRows')} "
+            f"realRows={state.get('realRows')} "
+            f"notificationLinks="
+            f"{state.get('notificationLinks')} "
+            f"dmsLinks={state.get('dmsLinks')} "
+            f"pageLength={state.get('lengthValue')!r} "
+            f"processing="
+            f"{state.get('processingVisible')} "
+            f"DT={state.get('dataTableAvailable')} "
+            f"DTrows={state.get('dataTableRows')} "
+            f"DTlen={state.get('dataTablePageLength')}"
+        ),
+        flush=True,
+    )
+
+    info = clean_text(
+        state.get(
+            "infoText",
+            "",
+        )
+    )
+
+    if info:
+
+        print(
+            f"{prefix}info={info!r}",
+            flush=True,
+        )
 
 
 # ============================================================
@@ -548,6 +901,7 @@ async def save_debug(
 async def open_home(
     page,
 ):
+
     print()
     print("=" * 78)
     print("OPENING MCA HOME")
@@ -559,21 +913,23 @@ async def open_home(
         timeout=60000,
     )
 
-    if response is not None:
+    if response:
+
         print(
             "HTTP status:",
             response.status,
         )
-
-    await page.wait_for_timeout(1500)
 
     print(
         "URL:",
         page.url,
     )
 
-    if response is not None and response.status >= 400:
+    if response and response.status >= 400:
+
         raise RuntimeError("MCA home returned " f"HTTP {response.status}")
+
+    await page.wait_for_timeout(1200)
 
 
 # ============================================================
@@ -584,21 +940,24 @@ async def open_home(
 async def find_acts_rules_link(
     page,
 ):
+
     selectors = [
         (".second-navigation " 'a[href="/content/mca/global/en/' 'acts-rules.html"]'),
         ('a[href="/content/mca/global/en/' 'acts-rules.html"]'),
     ]
 
     for selector in selectors:
+
         locator = page.locator(selector)
 
-        count = await locator.count()
+        for index in range(await locator.count()):
 
-        for index in range(count):
             candidate = locator.nth(index)
 
             try:
+
                 if await candidate.is_visible():
+
                     return candidate
 
             except Exception:
@@ -612,9 +971,10 @@ async def find_acts_rules_link(
 # ============================================================
 
 
-async def click_notifications_real(
+async def click_notifications_tab(
     page,
 ):
+
     print()
     print("Searching for Notifications tab...")
 
@@ -622,29 +982,36 @@ async def click_notifications_real(
         (".ebooknavigation " "a.menuClick" '[data-doccategory="Notifications"]'),
         ("a.menuClick" '[data-doccategory="Notifications"]'),
         ('a[data-doccategory="Notifications"]'),
-        ('a[val="Notifications"]'),
-        ('a[data-redirect="' '/ebooks/notifications.html"]'),
     ]
 
     for _ in range(100):
-        for frame_index, frame in enumerate(page.frames):
-            for selector in selectors:
-                try:
-                    candidates = frame.locator(selector)
 
-                    count = await candidates.count()
+        for frame_index, frame in enumerate(page.frames):
+
+            for selector in selectors:
+
+                try:
+
+                    locator = frame.locator(selector)
+
+                    count = await locator.count()
 
                 except Exception:
+
                     continue
 
                 for index in range(count):
-                    candidate = candidates.nth(index)
+
+                    candidate = locator.nth(index)
 
                     try:
+
                         if not await candidate.is_visible():
+
                             continue
 
                     except Exception:
+
                         continue
 
                     print("  Notifications tab found " f"in frame #{frame_index}")
@@ -655,22 +1022,24 @@ async def click_notifications_real(
                     )
 
                     try:
+
                         await candidate.click(
                             timeout=10000,
                         )
 
                     except Exception:
+
                         await candidate.click(
                             force=True,
                         )
 
                     for _ in range(150):
+
                         if is_notifications_url(page.url):
+
                             return True
 
                         await page.wait_for_timeout(100)
-
-                    return False
 
         await page.wait_for_timeout(100)
 
@@ -686,19 +1055,23 @@ async def find_notifications_context(
     page,
     timeout_seconds=20,
 ):
+
     loop = asyncio.get_running_loop()
 
     start = loop.time()
 
     while loop.time() - start < timeout_seconds:
-        for frame in page.frames:
-            try:
-                select = frame.locator("#DropDown_Act")
 
-                if await select.count() > 0:
+        for frame in page.frames:
+
+            try:
+
+                if await frame.locator("#DropDown_Act").count() > 0:
+
                     return frame
 
             except Exception:
+
                 pass
 
         await page.wait_for_timeout(100)
@@ -714,10 +1087,12 @@ async def find_notifications_context(
 async def open_notifications_module(
     page,
 ):
+
     for attempt in range(
         1,
         NAVIGATION_RETRIES + 1,
     ):
+
         print()
         print("=" * 78)
 
@@ -726,38 +1101,45 @@ async def open_notifications_module(
         print("=" * 78)
 
         if not is_home_url(page.url):
+
             await open_home(page)
 
         acts_link = await find_acts_rules_link(page)
 
         if acts_link is None:
-            print("Acts & Rules link not found.")
+
+            debug("Acts & Rules link not found.")
 
             continue
 
         print("Clicking Acts & Rules...")
 
         try:
+
             await acts_link.click(
                 timeout=10000,
             )
 
         except Exception:
+
             await acts_link.click(
                 force=True,
             )
 
         ebooks_seen = False
 
-        for _ in range(250):
+        for _ in range(200):
+
             if is_ebooks_url(page.url):
+
                 ebooks_seen = True
                 break
 
             await page.wait_for_timeout(50)
 
         if not ebooks_seen:
-            print("eBooks page not detected.")
+
+            debug("eBooks URL not detected.")
 
             continue
 
@@ -768,33 +1150,39 @@ async def open_notifications_module(
 
         await page.wait_for_timeout(500)
 
-        clicked = await click_notifications_real(page)
+        clicked = await click_notifications_tab(page)
 
-        if clicked:
-            frame = await find_notifications_context(
-                page,
-                timeout_seconds=20,
+        if not clicked:
+
+            debug("Notifications tab did not navigate.")
+
+        frame = await find_notifications_context(
+            page,
+            timeout_seconds=20,
+        )
+
+        if frame is not None:
+
+            print()
+            print("=" * 78)
+
+            print("NOTIFICATIONS MODULE LOADED")
+
+            print("=" * 78)
+
+            print(
+                "Current URL:",
+                page.url,
             )
 
-            if frame is not None:
-                print()
-                print("=" * 78)
-                print("NOTIFICATIONS MODULE LOADED")
-                print("=" * 78)
+            print(
+                "Notifications context:",
+                frame.url,
+            )
 
-                print(
-                    "Current URL:",
-                    page.url,
-                )
+            return frame
 
-                print(
-                    "Notifications context:",
-                    frame.url,
-                )
-
-                return frame
-
-        print("Using direct Notifications " "URL fallback...")
+        print("Using direct Notifications URL...")
 
         response = await page.goto(
             NOTIFICATIONS_DIRECT_URL,
@@ -803,8 +1191,8 @@ async def open_notifications_module(
         )
 
         print(
-            "Direct URL HTTP:",
-            (response.status if response else None),
+            "[DEBUG] Direct notifications HTTP:",
+            response.status if response else None,
         )
 
         frame = await find_notifications_context(
@@ -813,146 +1201,125 @@ async def open_notifications_module(
         )
 
         if frame is not None:
+
             return frame
 
-    raise RuntimeError("Could not load " "Notifications module.")
+    raise RuntimeError("Could not load Notifications module.")
 
 
 # ============================================================
-# FIND ACT DROPDOWN
+# COMPANIES ACT OPTION
 # ============================================================
 
 
-async def find_act_dropdown(
+async def wait_for_companies_act_option(
     page,
     frame,
 ):
+
     print()
-    print("Searching for Act dropdown containing " f"{TARGET_ACT!r}...")
+    print("Waiting for Companies Act option...")
 
     loop = asyncio.get_running_loop()
 
     start = loop.time()
 
-    while loop.time() - start < ACT_OPTIONS_TIMEOUT_SECONDS:
-        preferred = frame.locator("#DropDown_Act")
+    last_option_count = None
 
-        if await preferred.count() > 0:
-            dropdown = preferred.first
+    while loop.time() - start < ACT_OPTIONS_TIMEOUT_SECONDS:
+
+        dropdown = frame.locator("#DropDown_Act")
+
+        if await dropdown.count() > 0:
+
+            dropdown = dropdown.first
 
             options = dropdown.locator("option")
 
-            for option_index in range(await options.count()):
-                option = options.nth(option_index)
+            option_count = await options.count()
 
-                try:
-                    text = clean_text(await option.inner_text())
+            if option_count != last_option_count:
 
-                    data_id = await option.get_attribute("data-id") or ""
+                debug("Act dropdown option count: " f"{option_count}")
 
-                except Exception:
-                    continue
+                last_option_count = option_count
+
+            for index in range(option_count):
+
+                option = options.nth(index)
+
+                text = clean_text(await option.inner_text())
+
+                data_id = await option.get_attribute("data-id") or ""
 
                 if text == TARGET_ACT or data_id == TARGET_ACT_DATA_ID:
-                    print("Act dropdown found.")
 
-                    print(
-                        "  id:",
-                        repr(await dropdown.get_attribute("id")),
-                    )
+                    debug("Companies Act found at " f"option index {index}")
 
                     return (
                         dropdown,
-                        option_index,
+                        index,
                     )
 
         await page.wait_for_timeout(250)
 
-    raise RuntimeError("The Companies Act, 2013 " "option was not found.")
+    raise RuntimeError("Companies Act option not found.")
 
 
 # ============================================================
-# SELECT COMPANIES ACT
+# SELECT + LOCK COMPANIES ACT
 # ============================================================
 
 
-async def select_companies_act(
+async def select_and_lock_companies_act(
     page,
     frame,
 ):
+
+    print()
+    print("=" * 78)
+
+    print("SELECTING THE COMPANIES ACT, 2013")
+
+    print("=" * 78)
+
     (
         dropdown,
-        option_index,
-    ) = await find_act_dropdown(
+        target_index,
+    ) = await wait_for_companies_act_option(
         page,
         frame,
     )
 
-    print()
-    print("Selecting " "The Companies Act, 2013...")
-
-    selected = await dropdown.select_option(
-        index=option_index,
+    result = await dropdown.select_option(
+        index=target_index,
     )
 
     print(
-        "select_option result:",
-        selected,
+        "Initial select_option:",
+        result,
     )
 
-    # --------------------------------------------------------
-    # MCA has inline onchange handlers. Although select_option
-    # already fires input/change, explicitly dispatch them
-    # again and call MCA's enable function if it exists.
-    # --------------------------------------------------------
+    debug("Waiting 2 seconds for MCA " "onchange handler...")
 
-    state = await dropdown.evaluate("""
-        select => {
-            try {
-                select.dispatchEvent(
-                    new Event(
-                        'input',
-                        {
-                            bubbles: true
-                        }
-                    )
+    await page.wait_for_timeout(2000)
+
+    before = await frame.evaluate("""
+        () => {
+
+            const select =
+                document.querySelector(
+                    '#DropDown_Act'
                 );
-            }
-            catch (e) {}
 
-            try {
-                select.dispatchEvent(
-                    new Event(
-                        'change',
-                        {
-                            bubbles: true
-                        }
-                    )
-                );
+            if (!select) {
+                return null;
             }
-            catch (e) {}
-
-            try {
-                if (
-                    typeof window
-                        .enableclickGoButton
-                    === 'function'
-                ) {
-                    window
-                        .enableclickGoButton();
-                }
-            }
-            catch (e) {}
 
             const option =
                 select.options[
                     select.selectedIndex
                 ];
-
-            const go =
-                document.querySelector(
-                    '#clickGo'
-                );
 
             return {
                 index:
@@ -978,9 +1345,145 @@ async def select_companies_act(
                     ? (
                         option.getAttribute(
                             'data-id'
-                        ) || ''
+                        )
+                        || ''
                     )
-                    : '',
+                    : ''
+            };
+        }
+        """)
+
+    print(
+        "After MCA onchange:",
+        before,
+    )
+
+    locked = await frame.evaluate(
+        """
+        ({targetText, targetDataId}) => {
+
+            const select =
+                document.querySelector(
+                    '#DropDown_Act'
+                );
+
+            if (!select) {
+
+                return {
+                    ok: false,
+                    reason:
+                        'dropdown missing'
+                };
+            }
+
+            const options =
+                Array.from(
+                    select.options
+                );
+
+            let index =
+                options.findIndex(
+                    option =>
+                        (
+                            option.getAttribute(
+                                'data-id'
+                            )
+                            || ''
+                        )
+                        === targetDataId
+                );
+
+            if (index < 0) {
+
+                index =
+                    options.findIndex(
+                        option =>
+                            (
+                                option.textContent
+                                || ''
+                            )
+                            .replace(
+                                /\\s+/g,
+                                ' '
+                            )
+                            .trim()
+                            === targetText
+                    );
+            }
+
+            if (index < 0) {
+
+                return {
+                    ok: false,
+                    reason:
+                        'target option missing'
+                };
+            }
+
+            options.forEach(
+                (option, optionIndex) => {
+
+                    option.selected =
+                        (
+                            optionIndex
+                            === index
+                        );
+                }
+            );
+
+            select.selectedIndex =
+                index;
+
+            const go =
+                document.querySelector(
+                    '#clickGo'
+                );
+
+            if (go) {
+
+                try {
+                    go.disabled = false;
+                }
+                catch (error) {}
+
+                try {
+                    go.removeAttribute(
+                        'disabled'
+                    );
+                }
+                catch (error) {}
+            }
+
+            const selected =
+                select.options[
+                    select.selectedIndex
+                ];
+
+            return {
+
+                ok:
+                    true,
+
+                index:
+                    select.selectedIndex,
+
+                text:
+                    (
+                        selected.textContent
+                        || ''
+                    )
+                    .replace(/\\s+/g, ' ')
+                    .trim(),
+
+                value:
+                    selected.value
+                    || '',
+
+                dataId:
+                    selected.getAttribute(
+                        'data-id'
+                    )
+                    || '',
 
                 goFound:
                     !!go,
@@ -988,207 +1491,32 @@ async def select_companies_act(
                 goDisabled:
                     go
                     ? !!go.disabled
-                    : null,
-
-                goDisabledAttribute:
-                    go
-                    ? go.getAttribute(
-                        'disabled'
-                    )
-                    : null,
-
-                goDisabled1:
-                    go
-                    ? go.getAttribute(
-                        'disabled1'
-                    )
                     : null
             };
         }
-        """)
-
-    print(
-        "Selected:",
+        """,
         {
-            "index": state.get("index"),
-            "text": state.get("text"),
-            "value": state.get("value"),
-            "dataId": state.get("dataId"),
+            "targetText": TARGET_ACT,
+            "targetDataId": TARGET_ACT_DATA_ID,
         },
     )
 
     print(
-        "Go state after selection:",
-        {
-            "found": state.get("goFound"),
-            "disabled": state.get("goDisabled"),
-            "disabled-attr": state.get("goDisabledAttribute"),
-            "disabled1": state.get("goDisabled1"),
-        },
+        "LOCKED SELECTION:",
+        locked,
     )
 
-    if state.get("dataId") != TARGET_ACT_DATA_ID and state.get("text") != TARGET_ACT:
-        raise RuntimeError("Wrong Act selected.")
+    if not locked or not locked.get("ok"):
 
-    # Give MCA change handlers a moment.
-    await page.wait_for_timeout(750)
+        raise RuntimeError("Failed to lock Companies Act.")
 
+    if locked.get("text") != TARGET_ACT and locked.get("dataId") != TARGET_ACT_DATA_ID:
 
-# ============================================================
-# NOTIFICATION LOCATOR
-# ============================================================
-
-
-def notifications_link_locator(
-    frame,
-):
-    return frame.locator(
-        (
-            "a#notifications.dmslink, "
-            "a.dmslink#notifications, "
-            'a[id="notifications"].dmslink, '
-            '[id="notifications"].dmslink'
-        )
-    )
+        raise RuntimeError("Wrong Act selected after lock.")
 
 
 # ============================================================
-# RESULTS CHECK
-# ============================================================
-
-
-async def notification_result_state(
-    frame,
-):
-    try:
-        links = notifications_link_locator(frame)
-
-        count = await links.count()
-
-    except Exception:
-        count = 0
-
-    table_exists = False
-    rows = 0
-    processing_text = ""
-
-    # --------------------------------------------------------
-    # Known DataTables ID
-    # --------------------------------------------------------
-
-    try:
-        table = frame.locator("#notificationCircularResultTable")
-
-        table_exists = await table.count() > 0
-
-        if table_exists:
-            rows = await table.locator("tbody tr").count()
-
-    except Exception:
-        pass
-
-    # --------------------------------------------------------
-    # DataTables processing message
-    # --------------------------------------------------------
-
-    try:
-        processing = frame.locator(
-            ("#notificationCircularResultTable_processing, " ".dataTables_processing")
-        )
-
-        for index in range(await processing.count()):
-            item = processing.nth(index)
-
-            if await item.is_visible():
-                processing_text = clean_text(await item.inner_text())
-
-                break
-
-    except Exception:
-        pass
-
-    return {
-        "links": count,
-        "table_exists": table_exists,
-        "rows": rows,
-        "processing": processing_text,
-    }
-
-
-async def wait_for_notification_results_once(
-    page,
-    frame,
-    timeout_seconds,
-):
-    loop = asyncio.get_running_loop()
-
-    start = loop.time()
-
-    last_state = None
-    last_print_second = -1
-
-    while loop.time() - start < timeout_seconds:
-        state = await notification_result_state(frame)
-
-        elapsed = int(loop.time() - start)
-
-        if state != last_state or elapsed != last_print_second:
-            print(
-                "  "
-                f"[{elapsed:02d}s] "
-                f"links={state['links']} "
-                f"rows={state['rows']} "
-                f"table={state['table_exists']} "
-                f"processing="
-                f"{state['processing']!r}"
-            )
-
-            last_state = state.copy()
-            last_print_second = elapsed
-
-        if state["links"] > 0:
-            return True
-
-        await page.wait_for_timeout(250)
-
-    return False
-
-
-# ============================================================
-# FIND GO
-# ============================================================
-
-
-async def find_go_button(
-    frame,
-):
-    selectors = [
-        "#clickGo",
-        'button:has-text("Go")',
-        'input[type="button"][value="Go"]',
-        'input[type="submit"][value="Go"]',
-    ]
-
-    for selector in selectors:
-        candidates = frame.locator(selector)
-
-        count = await candidates.count()
-
-        for index in range(count):
-            candidate = candidates.nth(index)
-
-            try:
-                if await candidate.is_visible():
-                    return candidate
-
-            except Exception:
-                pass
-
-    return None
-
-
-# ============================================================
-# ROBUST GO
+# CLICK GO + VERIFY FILTER
 # ============================================================
 
 
@@ -1196,290 +1524,163 @@ async def click_go_and_wait(
     page,
     frame,
 ):
+
     print()
     print("=" * 78)
+
     print("CLICKING GO")
+
     print("=" * 78)
 
-    # ========================================================
-    # GO ATTEMPT 1: NORMAL REAL PLAYWRIGHT CLICK
-    # ========================================================
-
-    print()
-    print("GO ATTEMPT 1/3:")
-
-    print("  Real Playwright click")
-
-    go = await find_go_button(frame)
-
-    if go is None:
-        raise RuntimeError("Go button not found.")
-
-    try:
-        print(
-            "  disabled:",
-            await go.is_disabled(),
-        )
-
-    except Exception:
-        pass
-
-    try:
-        print(
-            "  disabled1:",
-            repr(await go.get_attribute("disabled1")),
-        )
-
-    except Exception:
-        pass
-
-    try:
-        await go.scroll_into_view_if_needed()
-
-    except Exception:
-        pass
-
-    try:
-        await go.click(
-            timeout=15000,
-        )
-
-        print("  Click completed.")
-
-    except Exception as exc:
-        print(
-            "  Normal click exception:",
-            repr(exc),
-        )
-
-    found = await wait_for_notification_results_once(
-        page,
-        frame,
-        GO_ATTEMPT_WAIT_SECONDS,
-    )
-
-    if found:
-        print()
-        print("Notification results loaded " "after normal click.")
-
-        return frame
-
-    # ========================================================
-    # GO ATTEMPT 2: FORCE REAL PLAYWRIGHT CLICK
-    # ========================================================
-
-    print()
-    print("GO ATTEMPT 2/3:")
-
-    print("  Force Playwright click")
-
-    go = await find_go_button(frame)
-
-    if go is None:
-        raise RuntimeError("Go button disappeared.")
-
-    # Remove literal HTML disabled attribute only if MCA left one.
-    # Do not replace the click handler.
-    try:
-        state = await go.evaluate("""
-            button => {
-                try {
-                    button.disabled = false;
-                }
-                catch (e) {}
-
-                try {
-                    button.removeAttribute(
-                        'disabled'
-                    );
-                }
-                catch (e) {}
-
-                return {
-                    disabled:
-                        !!button.disabled,
-                    disabled1:
-                        button.getAttribute(
-                            'disabled1'
-                        ),
-                    onclick:
-                        button.getAttribute(
-                            'onclick'
-                        )
-                };
-            }
-            """)
-
-        print(
-            "  Go DOM state:",
-            state,
-        )
-
-    except Exception as exc:
-        print(
-            "  Could not inspect Go:",
-            repr(exc),
-        )
-
-    try:
-        await go.click(
-            force=True,
-            timeout=15000,
-        )
-
-        print("  Force click completed.")
-
-    except Exception as exc:
-        print(
-            "  Force click exception:",
-            repr(exc),
-        )
-
-    found = await wait_for_notification_results_once(
-        page,
-        frame,
-        GO_ATTEMPT_WAIT_SECONDS,
-    )
-
-    if found:
-        print()
-        print("Notification results loaded " "after forced click.")
-
-        return frame
-
-    # ========================================================
-    # GO ATTEMPT 3: DOM CLICK
-    # ========================================================
-
-    print()
-    print("GO ATTEMPT 3/3:")
-
-    print("  MCA DOM click fallback")
-
-    result = await frame.evaluate("""
+    selected = await frame.evaluate("""
         () => {
+
             const select =
                 document.querySelector(
                     '#DropDown_Act'
                 );
 
-            if (select) {
-                try {
-                    select.dispatchEvent(
-                        new Event(
-                            'input',
-                            {
-                                bubbles: true
-                            }
-                        )
-                    );
-                }
-                catch (e) {}
-
-                try {
-                    select.dispatchEvent(
-                        new Event(
-                            'change',
-                            {
-                                bubbles: true
-                            }
-                        )
-                    );
-                }
-                catch (e) {}
+            if (!select) {
+                return null;
             }
 
-            try {
-                if (
-                    typeof window
-                        .enableclickGoButton
-                    === 'function'
-                ) {
-                    window
-                        .enableclickGoButton();
-                }
-            }
-            catch (e) {}
+            const option =
+                select.options[
+                    select.selectedIndex
+                ];
 
-            const go =
-                document.querySelector(
-                    '#clickGo'
-                );
+            return {
 
-            if (!go) {
-                return {
-                    ok: false,
-                    reason:
-                        '#clickGo not found'
-                };
-            }
+                index:
+                    select.selectedIndex,
 
-            try {
-                go.disabled = false;
-            }
-            catch (e) {}
-
-            try {
-                go.removeAttribute(
-                    'disabled'
-                );
-            }
-            catch (e) {}
-
-            const result = {
-                ok: true,
                 text:
-                    (
-                        go.textContent
+                    option
+                    ? (
+                        option.textContent
                         || ''
                     )
                     .replace(/\\s+/g, ' ')
-                    .trim(),
-                onclick:
-                    go.getAttribute(
-                        'onclick'
-                    ),
-                disabled1:
-                    go.getAttribute(
-                        'disabled1'
+                    .trim()
+                    : '',
+
+                dataId:
+                    option
+                    ? (
+                        option.getAttribute(
+                            'data-id'
+                        )
+                        || ''
                     )
+                    : ''
             };
-
-            go.click();
-
-            return result;
         }
         """)
 
     print(
-        "  DOM click result:",
-        result,
+        "Selection immediately before Go:",
+        selected,
     )
 
-    found = await wait_for_notification_results_once(
-        page,
-        frame,
-        GO_ATTEMPT_WAIT_SECONDS,
-    )
+    if not selected or (
+        selected.get("text") != TARGET_ACT and selected.get("dataId") != TARGET_ACT_DATA_ID
+    ):
 
-    if found:
-        print()
-        print("Notification results loaded " "after DOM click.")
+        raise RuntimeError("Companies Act selection lost " "before Go.")
 
-        return frame
+    go = frame.locator("#clickGo")
 
-    await save_debug(
-        page,
-        "go_failed_no_notification_results",
-    )
+    if await go.count() == 0:
 
-    raise RuntimeError(
-        "Go was triggered using all three " "methods but MCA returned no " "notification links."
-    )
+        raise RuntimeError("Go button missing.")
+
+    notification_request_urls.clear()
+
+    started = time.monotonic()
+
+    try:
+
+        await go.first.click(
+            timeout=15000,
+        )
+
+    except Exception:
+
+        await go.first.click(
+            force=True,
+        )
+
+    print("Go clicked.")
+
+    loop = asyncio.get_running_loop()
+
+    start = loop.time()
+
+    filtered_seen = False
+    last_print = -1
+
+    while loop.time() - start < RESULTS_TIMEOUT_SECONDS:
+
+        for request_url in notification_request_urls:
+
+            decoded = unquote(request_url)
+
+            if (
+                "docCategory=Notifications" in decoded
+                and "docGroup=" in decoded
+                and TARGET_ACT in decoded
+            ):
+
+                filtered_seen = True
+                break
+
+        state = await get_notification_table_state(frame)
+
+        elapsed = int(loop.time() - start)
+
+        if elapsed != last_print:
+
+            print_table_state(
+                (f"[DEBUG GO +{elapsed:02d}s] "),
+                state,
+            )
+
+            last_print = elapsed
+
+        if (
+            filtered_seen
+            and state.get(
+                "realRows",
+                0,
+            )
+            > 0
+        ):
+
+            print()
+            print("FILTERED REQUEST VERIFIED")
+
+            for request_url in notification_request_urls:
+
+                decoded = unquote(request_url)
+
+                if "docGroup=" in decoded:
+
+                    print(
+                        " ",
+                        request_url,
+                    )
+
+            debug("Go/filter stage finished in " f"{time.monotonic() - started:.2f}s")
+
+            return
+
+        await page.wait_for_timeout(250)
+
+    raise RuntimeError("Companies Act filtered " "results did not load.")
 
 
 # ============================================================
-# SELECT ALL RESULTS
+# SELECT ALL
 # ============================================================
 
 
@@ -1487,6 +1688,7 @@ async def select_all_results(
     page,
     frame,
 ):
+
     print()
     print("=" * 78)
 
@@ -1494,150 +1696,220 @@ async def select_all_results(
 
     print("=" * 78)
 
-    selectors = [
-        ('select[name="' "notificationCircularResultTable_length" '"]'),
-        ('select[aria-controls="' "notificationCircularResultTable" '"]'),
-        ".dataTables_length select",
-    ]
+    before = await get_notification_table_state(frame)
 
-    dropdown = None
-
-    for selector in selectors:
-        candidate = frame.locator(selector)
-
-        if await candidate.count() > 0:
-            dropdown = candidate.first
-
-            break
-
-    if dropdown is None:
-        raise RuntimeError("Notification results-per-page " "dropdown not found.")
-
-    print(
-        "Results-per-page name:",
-        repr(await dropdown.get_attribute("name")),
+    print_table_state(
+        "[DEBUG BEFORE ALL] ",
+        before,
     )
 
+    dropdown = frame.locator(('select[name="' "notificationCircularResultTable_length" '"]'))
+
+    if await dropdown.count() == 0:
+
+        dropdown = frame.locator(('select[aria-controls="' "notificationCircularResultTable" '"]'))
+
+    if await dropdown.count() == 0:
+
+        raise RuntimeError("Results-per-page " "dropdown missing.")
+
+    dropdown = dropdown.first
+
+    options = await dropdown.evaluate("""
+        select =>
+            Array.from(
+                select.options
+            )
+            .map(
+                option => ({
+                    value:
+                        option.value,
+
+                    text:
+                        (
+                            option.textContent
+                            || ''
+                        )
+                        .replace(/\\s+/g, ' ')
+                        .trim(),
+
+                    selected:
+                        option.selected
+                })
+            )
+        """)
+
+    debug(f"Page-length options: {options!r}")
+
+    started = time.monotonic()
+
     try:
-        await dropdown.select_option(value="-1")
+
+        selected = await dropdown.select_option(value="-1")
 
     except Exception:
-        await dropdown.select_option(label="All")
 
-    print("Selected All.")
+        selected = await dropdown.select_option(label="All")
 
-    previous = -1
-    stable = 0
+    print(
+        "Selected All:",
+        selected,
+    )
 
-    for _ in range(120):
-        count = await notifications_link_locator(frame).count()
+    loop = asyncio.get_running_loop()
 
-        if count != previous:
-            print(
-                "  Current document links:",
-                count,
-            )
+    start = loop.time()
 
-            previous = count
-            stable = 0
+    previous_signature = None
+    stable_checks = 0
+    last_log_time = -1
+
+    final_state = None
+
+    while loop.time() - start < ALL_RESULTS_TIMEOUT_SECONDS:
+
+        state = await get_notification_table_state(frame)
+
+        final_state = state
+
+        elapsed_float = loop.time() - start
+
+        elapsed_second = int(elapsed_float)
+
+        signature = (
+            state.get("realRows"),
+            state.get("notificationLinks"),
+            state.get("lengthValue"),
+            state.get("processingVisible"),
+            state.get("dataTableRows"),
+            state.get("dataTablePageLength"),
+        )
+
+        if signature == previous_signature:
+
+            stable_checks += 1
 
         else:
-            stable += 1
 
-        if count > 5 and stable >= 5:
+            stable_checks = 0
+
+            debug("Table state changed: " f"{previous_signature!r} " "-> " f"{signature!r}")
+
+            previous_signature = signature
+
+        if elapsed_second != last_log_time:
+
+            print_table_state(
+                (f"[DEBUG ALL " f"+{elapsed_float:05.2f}s] "),
+                state,
+            )
+
+            print(
+                ("[DEBUG ALL] " f"stableChecks={stable_checks}"),
+                flush=True,
+            )
+
+            last_log_time = elapsed_second
+
+        real_rows = (
+            state.get(
+                "realRows",
+                0,
+            )
+            or 0
+        )
+
+        page_length = str(
+            state.get(
+                "lengthValue",
+                "",
+            )
+        )
+
+        processing = bool(
+            state.get(
+                "processingVisible",
+                False,
+            )
+        )
+
+        if real_rows > 5 and page_length == "-1" and not processing and stable_checks >= 3:
+
+            debug("All-results table is stable.")
+
             break
 
         await page.wait_for_timeout(250)
 
-    final_count = await notifications_link_locator(frame).count()
+    if final_state is None:
+
+        raise RuntimeError("Could not read final " "DataTable state.")
+
+    final_count = (
+        final_state.get(
+            "realRows",
+            0,
+        )
+        or 0
+    )
+
+    print()
+    print("=" * 78)
+
+    print("ALL RESULTS STABLE")
+
+    print("=" * 78)
+
+    print_table_state(
+        "[DEBUG FINAL ALL] ",
+        final_state,
+    )
 
     print(
-        "Final notification links:",
+        "FINAL FILTERED NOTIFICATION ROWS:",
         final_count,
     )
+
+    print(
+        "Time to select/render All:",
+        f"{time.monotonic() - started:.2f}s",
+    )
+
+    if final_count <= 5:
+
+        await save_debug(
+            page,
+            "all_results_did_not_expand",
+        )
+
+        raise RuntimeError("Selecting All did not " "expand the result table.")
+
+    if final_count >= 800:
+
+        await save_debug(
+            page,
+            "unfiltered_all_acts_results",
+        )
+
+        raise RuntimeError(
+            f"Got {final_count} rows. "
+            "This appears to be "
+            "all-Acts data. "
+            "Refusing to download."
+        )
 
     return final_count
 
 
 # ============================================================
-# METADATA
+# FAST METADATA EXTRACTION
 # ============================================================
-
-DATE_PATTERN = re.compile(r"\b(\d{1,2}/\d{1,2}/\d{4})\b")
-
-
-async def extract_notification_metadata(
-    link,
-):
-    row = link.locator("xpath=ancestor::tr[1]")
-
-    particulars = clean_text(await link.inner_text())
-
-    if not particulars:
-        particulars = clean_text(await link.get_attribute("title") or "")
-
-    href = clean_text(await link.get_attribute("href") or "")
-
-    if href.startswith("/"):
-        href = urljoin(
-            "https://www.mca.gov.in",
-            href,
-        )
-
-    cells = []
-
-    if await row.count() > 0:
-        tds = row.locator("td")
-
-        for index in range(await tds.count()):
-            try:
-                cells.append(clean_text(await tds.nth(index).inner_text()))
-
-            except Exception:
-                cells.append("")
-
-    notification_date = ""
-
-    for value in cells:
-        match = DATE_PATTERN.search(value)
-
-        if match:
-            notification_date = match.group(1)
-
-            break
-
-    if not notification_date:
-        try:
-            row_text = clean_text(await row.inner_text())
-
-            match = DATE_PATTERN.search(row_text)
-
-            if match:
-                notification_date = match.group(1)
-
-        except Exception:
-            pass
-
-    if not notification_date:
-        raise RuntimeError("Notification date could not " f"be extracted for {particulars!r}")
-
-    if not particulars:
-        raise RuntimeError("Particulars are empty.")
-
-    document_id = decode_document_id_from_url(href)
-
-    return {
-        "document_id": document_id,
-        "notification_date": notification_date,
-        "particulars": particulars,
-        "href": href,
-        "cells": cells,
-    }
 
 
 async def collect_notification_metadata(
     frame,
 ):
+
     print()
     print("=" * 78)
 
@@ -1645,81 +1917,466 @@ async def collect_notification_metadata(
 
     print("=" * 78)
 
-    links = notifications_link_locator(frame)
+    started = time.monotonic()
 
-    total = await links.count()
+    result = await frame.evaluate("""
+        () => {
+
+            const table =
+                document.querySelector(
+                    '#notificationCircularResultTable'
+                );
+
+            if (!table) {
+
+                return {
+                    ok: false,
+                    error:
+                        'notification table not found',
+                    rows: []
+                };
+            }
+
+            const tableRows =
+                Array.from(
+                    table.querySelectorAll(
+                        'tbody > tr'
+                    )
+                );
+
+            const rows = [];
+            const errors = [];
+
+            for (
+                let index = 0;
+                index < tableRows.length;
+                index++
+            ) {
+
+                const row =
+                    tableRows[index];
+
+                const rowText =
+                    (
+                        row.innerText
+                        || ''
+                    )
+                    .replace(
+                        /\\s+/g,
+                        ' '
+                    )
+                    .trim();
+
+                if (!rowText) {
+                    continue;
+                }
+
+                const lower =
+                    rowText.toLowerCase();
+
+                if (
+                    lower.includes(
+                        'no data available'
+                    )
+                    ||
+                    lower.includes(
+                        'no matching records'
+                    )
+                    ||
+                    lower.includes(
+                        'processing...'
+                    )
+                    ||
+                    lower.includes(
+                        'loading...'
+                    )
+                ) {
+
+                    continue;
+                }
+
+                const cells =
+                    Array.from(
+                        row.querySelectorAll(
+                            'td'
+                        )
+                    )
+                    .map(
+                        td =>
+                            (
+                                td.innerText
+                                || ''
+                            )
+                            .replace(
+                                /\\s+/g,
+                                ' '
+                            )
+                            .trim()
+                    );
+
+                if (
+                    cells.length
+                    === 0
+                ) {
+
+                    continue;
+                }
+
+                let link =
+                    row.querySelector(
+                        'a.notifications.dmslink'
+                    );
+
+                if (!link) {
+
+                    link =
+                        row.querySelector(
+                            'a.dmslink[data-doccategory="Notifications"]'
+                        );
+                }
+
+                if (!link) {
+
+                    errors.push({
+                        rowIndex:
+                            index,
+
+                        reason:
+                            'notification link missing',
+
+                        html:
+                            row.outerHTML.substring(
+                                0,
+                                1000
+                            )
+                    });
+
+                    continue;
+                }
+
+                const documentId =
+                    (
+                        link.getAttribute(
+                            'val'
+                        )
+                        || ''
+                    )
+                    .trim();
+
+                const docCategory =
+                    (
+                        link.getAttribute(
+                            'data-doccategory'
+                        )
+                        || ''
+                    )
+                    .trim();
+
+                const particulars =
+                    (
+                        link.innerText
+                        || link.textContent
+                        || ''
+                    )
+                    .replace(
+                        /\\s+/g,
+                        ' '
+                    )
+                    .trim();
+
+                const ariaLabel =
+                    (
+                        link.getAttribute(
+                            'aria-label'
+                        )
+                        || ''
+                    )
+                    .replace(
+                        /\\s+/g,
+                        ' '
+                    )
+                    .trim();
+
+                let date = '';
+
+                for (
+                    const cell
+                    of cells
+                ) {
+
+                    const match =
+                        cell.match(
+                            /\\b(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\b/
+                        );
+
+                    if (match) {
+
+                        date =
+                            match[1];
+
+                        break;
+                    }
+                }
+
+                if (!date) {
+
+                    const match =
+                        rowText.match(
+                            /\\b(\\d{1,2}\\/\\d{1,2}\\/\\d{4})\\b/
+                        );
+
+                    if (match) {
+
+                        date =
+                            match[1];
+                    }
+                }
+
+                if (!documentId) {
+
+                    errors.push({
+                        rowIndex:
+                            index,
+
+                        reason:
+                            'val/document ID missing',
+
+                        text:
+                            rowText
+                    });
+
+                    continue;
+                }
+
+                if (!date) {
+
+                    errors.push({
+                        rowIndex:
+                            index,
+
+                        reason:
+                            'date missing',
+
+                        text:
+                            rowText
+                    });
+
+                    continue;
+                }
+
+                rows.push({
+
+                    source_index:
+                        index,
+
+                    document_id:
+                        documentId,
+
+                    notification_date:
+                        date,
+
+                    particulars:
+                        particulars
+                        || ariaLabel,
+
+                    doc_category:
+                        docCategory
+                        || 'Notifications',
+
+                    cells:
+                        cells
+                });
+            }
+
+            return {
+
+                ok:
+                    true,
+
+                rawTableRows:
+                    tableRows.length,
+
+                parsedRows:
+                    rows.length,
+
+                errors:
+                    errors,
+
+                rows:
+                    rows
+            };
+        }
+        """)
+
+    if not result.get("ok"):
+
+        raise RuntimeError("Metadata extraction failed: " f"{result!r}")
 
     print(
-        "Notification document links:",
-        total,
+        "Raw table rows:",
+        result.get("rawTableRows"),
     )
 
-    items = []
+    print(
+        "Parsed notification rows:",
+        result.get("parsedRows"),
+    )
 
-    for index in range(total):
-        try:
-            link = links.nth(index)
+    errors = result.get("errors") or []
 
-            metadata = await extract_notification_metadata(link)
+    print(
+        "Metadata errors:",
+        len(errors),
+    )
 
-            metadata["source_index"] = index
+    for error in errors[:10]:
 
-            if not metadata.get("href"):
-                continue
+        print(
+            "[DEBUG METADATA ERROR]",
+            error,
+        )
 
-            items.append(metadata)
+    rows = result.get("rows") or []
 
-        except Exception as exc:
-            print(
-                "  Metadata error " f"row {index + 1}:",
-                repr(exc),
+    metadata = []
+
+    for item in rows:
+
+        document_id = clean_text(
+            item.get(
+                "document_id",
+                "",
             )
+        )
+
+        doc_category = clean_text(
+            item.get(
+                "doc_category",
+                "",
+            )
+        )
+
+        if not doc_category:
+
+            doc_category = "Notifications"
+
+        item["href"] = build_document_url(
+            document_id,
+            doc_category,
+        )
+
+        metadata.append(item)
 
     print(
         "Usable notifications:",
-        len(items),
+        len(metadata),
     )
 
-    return items
+    print(
+        "Metadata extraction time:",
+        f"{time.monotonic() - started:.2f}s",
+    )
+
+    if not metadata:
+
+        raise RuntimeError("No notification metadata " "was extracted.")
+
+    table_state = await get_notification_table_state(frame)
+
+    expected_rows = (
+        table_state.get(
+            "realRows",
+            0,
+        )
+        or 0
+    )
+
+    if len(metadata) != expected_rows:
+
+        print()
+        print("WARNING:")
+
+        print(
+            "  Real table rows:",
+            expected_rows,
+        )
+
+        print(
+            "  Parsed metadata:",
+            len(metadata),
+        )
+
+        print(
+            "  Difference:",
+            (expected_rows - len(metadata)),
+        )
+
+        if abs(expected_rows - len(metadata)) > 5:
+
+            raise RuntimeError("Too many notification rows " "failed metadata extraction.")
+
+    print()
+    print("FIRST PARSED NOTIFICATIONS")
+
+    for index, item in enumerate(metadata[:3]):
+
+        print()
+        print(f"  [{index + 1}]")
+
+        print(
+            "    Date:",
+            item.get("notification_date"),
+        )
+
+        print(
+            "    Document ID:",
+            item.get("document_id"),
+        )
+
+        print(
+            "    Category:",
+            item.get("doc_category"),
+        )
+
+        print(
+            "    Particulars:",
+            repr(item.get("particulars")),
+        )
+
+        print(
+            "    URL:",
+            item.get("href"),
+        )
+
+    return metadata
 
 
 # ============================================================
-# DIRECT HTTP PDF DOWNLOAD
+# DIRECT DOWNLOAD
 # ============================================================
 
 
-async def try_direct_endpoint_download(
+async def download_pdf_direct(
     context,
     metadata,
     destination,
 ):
+
     url = metadata["href"]
 
-    if not url:
-        raise RuntimeError("Document URL is empty.")
+    request_started = time.monotonic()
 
     response = await context.request.get(
         url,
-        timeout=DIRECT_HTTP_TIMEOUT_MS,
+        timeout=(DIRECT_HTTP_TIMEOUT_MS),
         fail_on_status_code=False,
         headers={
             "Referer": NOTIFICATIONS_DIRECT_URL,
-            "Accept": ("application/pdf," "application/octet-stream;" "q=0.9,*/*;q=0.8"),
+            "Accept": ("application/pdf," "application/octet-stream," "*/*"),
         },
     )
 
     status = response.status
-
-    # ========================================================
-    # IMPORTANT:
-    #
-    # APIResponse.headers is the correct property.
-    #
-    # Do NOT call:
-    #
-    #   await response.all_headers()
-    #
-    # ========================================================
 
     headers = response.headers
 
@@ -1737,8 +2394,12 @@ async def try_direct_endpoint_download(
         )
     )
 
+    body = await response.body()
+
+    elapsed = time.monotonic() - request_started
+
     print(
-        "  Direct HTTP status:",
+        "  HTTP status:",
         status,
     )
 
@@ -1748,373 +2409,121 @@ async def try_direct_endpoint_download(
     )
 
     if content_disposition:
+
         print(
             "  Content-Disposition:",
             repr(content_disposition),
         )
 
-    body = await response.body()
-
     print(
-        "  Direct response bytes:",
+        "  Response bytes:",
         len(body),
     )
 
+    print(
+        "  HTTP time:",
+        f"{elapsed:.2f}s",
+    )
+
     if status < 200 or status >= 300:
-        raise RuntimeError("Direct endpoint returned " f"HTTP {status}")
+
+        error = RuntimeError(f"HTTP {status}")
+
+        error.http_status = status
+
+        raise error
 
     if not looks_like_pdf(body):
+
         preview = clean_text(
-            body[:400].decode(
+            body[:500].decode(
                 "utf-8",
                 errors="ignore",
             )
         )
 
-        raise RuntimeError(
-            "Direct endpoint did not "
-            "return PDF. "
-            f"Content-Type={content_type!r}; "
-            f"preview={preview!r}"
+        error = RuntimeError(
+            "Response is not PDF. " f"Content-Type={content_type!r}; " f"preview={preview!r}"
         )
 
-    pdf_bytes = normalize_pdf_bytes(body)
+        error.http_status = status
 
-    destination.write_bytes(pdf_bytes)
+        raise error
+
+    body = normalize_pdf_bytes(body)
+
+    destination.write_bytes(body)
 
     original_pdf = filename_from_content_disposition(headers)
 
     if not original_pdf:
-        document_id = metadata.get("document_id") or "notification"
 
-        original_pdf = f"{document_id}.pdf"
+        original_pdf = metadata["document_id"] + ".pdf"
 
     return {
         "original_pdf": original_pdf,
-        "bytes": len(pdf_bytes),
-        "status": status,
-        "content_type": content_type,
+        "bytes": len(body),
+        "http_status": status,
+        "elapsed": elapsed,
     }
 
 
 # ============================================================
-# POPUP FALLBACK
+# CALCULATE RETRY DELAY
 # ============================================================
 
 
-async def try_popup_fallback(
-    page,
-    context,
-    frame,
-    metadata,
-    destination,
+def calculate_retry_delay(
+    attempt,
+    error,
 ):
-    source_index = metadata["source_index"]
 
-    links = notifications_link_locator(frame)
-
-    if source_index >= await links.count():
-        raise RuntimeError("Notification link disappeared.")
-
-    link = links.nth(source_index)
-
-    try:
-        await link.scroll_into_view_if_needed()
-
-    except Exception:
-        pass
-
-    loop = asyncio.get_running_loop()
-
-    download_future = loop.create_future()
-
-    popup_future = loop.create_future()
-
-    def on_download(
-        download,
-    ):
-        if not download_future.done():
-            download_future.set_result(download)
-
-    def on_popup(
-        popup,
-    ):
-        if not popup_future.done():
-            popup_future.set_result(popup)
-
-    page.on(
-        "download",
-        on_download,
+    http_status = getattr(
+        error,
+        "http_status",
+        None,
     )
 
-    page.on(
-        "popup",
-        on_popup,
-    )
+    if http_status == 403:
 
-    try:
-        try:
-            await link.click(
-                timeout=15000,
-            )
+        delay = HTTP_403_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
 
-        except Exception:
-            await link.click(
-                force=True,
-            )
-
-        done, pending = await asyncio.wait(
-            {
-                download_future,
-                popup_future,
-            },
-            timeout=POPUP_WAIT_SECONDS,
-            return_when=(asyncio.FIRST_COMPLETED),
+        return (
+            delay,
+            "HTTP 403 exponential backoff",
         )
 
-        # ----------------------------------------------------
-        # Browser download
-        # ----------------------------------------------------
+    delay = RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
 
-        if download_future in done:
-            download = download_future.result()
-
-            original_pdf = clean_text(download.suggested_filename or "")
-
-            await download.save_as(str(destination))
-
-            return {
-                "original_pdf": original_pdf or "notification.pdf",
-                "method": "browser-download",
-            }
-
-        # ----------------------------------------------------
-        # Popup
-        # ----------------------------------------------------
-
-        if popup_future in done:
-            popup = popup_future.result()
-
-            try:
-                await popup.wait_for_load_state(
-                    "domcontentloaded",
-                    timeout=30000,
-                )
-
-            except Exception:
-                pass
-
-            popup_url = popup.url
-
-            print(
-                "  Popup URL:",
-                popup_url,
-            )
-
-            # -----------------------------------------------
-            # Popup may subsequently create a download.
-            # -----------------------------------------------
-
-            try:
-                if not download_future.done():
-                    download = await asyncio.wait_for(
-                        download_future,
-                        timeout=5,
-                    )
-
-                    original_pdf = clean_text(download.suggested_filename or "")
-
-                    await download.save_as(str(destination))
-
-                    try:
-                        await popup.close()
-
-                    except Exception:
-                        pass
-
-                    return {
-                        "original_pdf": original_pdf or "notification.pdf",
-                        "method": "popup-download",
-                    }
-
-            except asyncio.TimeoutError:
-                pass
-
-            # -----------------------------------------------
-            # Fetch popup URL
-            # -----------------------------------------------
-
-            if popup_url and popup_url != "about:blank":
-                response = await context.request.get(
-                    popup_url,
-                    timeout=(DIRECT_HTTP_TIMEOUT_MS),
-                    fail_on_status_code=False,
-                )
-
-                body = await response.body()
-
-                if 200 <= response.status < 300 and looks_like_pdf(body):
-                    headers = response.headers
-
-                    destination.write_bytes(normalize_pdf_bytes(body))
-
-                    original_pdf = filename_from_content_disposition(headers)
-
-                    if not original_pdf:
-                        original_pdf = (metadata.get("document_id") or "notification") + ".pdf"
-
-                    try:
-                        await popup.close()
-
-                    except Exception:
-                        pass
-
-                    return {
-                        "original_pdf": original_pdf,
-                        "method": "popup-http",
-                    }
-
-            # -----------------------------------------------
-            # Look for embedded PDF URL
-            # -----------------------------------------------
-
-            pdf_candidate = ""
-
-            selectors = [
-                (
-                    "iframe",
-                    "src",
-                ),
-                (
-                    "embed",
-                    "src",
-                ),
-                (
-                    "object",
-                    "data",
-                ),
-                (
-                    'a[href*="getdocument"]',
-                    "href",
-                ),
-                (
-                    'a[href*=".pdf"]',
-                    "href",
-                ),
-            ]
-
-            for selector, attribute in selectors:
-                try:
-                    locator = popup.locator(selector)
-
-                    if await locator.count() == 0:
-                        continue
-
-                    value = await locator.first.get_attribute(attribute) or ""
-
-                    if value:
-                        pdf_candidate = urljoin(
-                            popup_url,
-                            value,
-                        )
-
-                        break
-
-                except Exception:
-                    pass
-
-            if pdf_candidate:
-                print(
-                    "  Popup PDF candidate:",
-                    pdf_candidate,
-                )
-
-                response = await context.request.get(
-                    pdf_candidate,
-                    timeout=(DIRECT_HTTP_TIMEOUT_MS),
-                    fail_on_status_code=False,
-                )
-
-                body = await response.body()
-
-                if 200 <= response.status < 300 and looks_like_pdf(body):
-                    headers = response.headers
-
-                    destination.write_bytes(normalize_pdf_bytes(body))
-
-                    original_pdf = filename_from_content_disposition(headers)
-
-                    if not original_pdf:
-                        original_pdf = (metadata.get("document_id") or "notification") + ".pdf"
-
-                    try:
-                        await popup.close()
-
-                    except Exception:
-                        pass
-
-                    return {
-                        "original_pdf": original_pdf,
-                        "method": "popup-pdf-url",
-                    }
-
-            try:
-                await popup.close()
-
-            except Exception:
-                pass
-
-        raise RuntimeError("Popup fallback did not " "produce a PDF.")
-
-    finally:
-        try:
-            page.remove_listener(
-                "download",
-                on_download,
-            )
-
-        except Exception:
-            pass
-
-        try:
-            page.remove_listener(
-                "popup",
-                on_popup,
-            )
-
-        except Exception:
-            pass
+    return (
+        delay,
+        "exponential backoff",
+    )
 
 
 # ============================================================
-# DOWNLOAD ONE NOTIFICATION
+# DOWNLOAD ONE
 # ============================================================
 
 
 async def download_notification(
-    page,
     context,
-    frame,
     metadata,
-    item_index,
-    total_items,
+    index,
+    total,
     manifest_rows,
 ):
-    document_id = clean_text(
-        metadata.get(
-            "document_id",
-            "",
-        )
-    )
 
-    notification_date = metadata["notification_date"]
+    document_id = clean_text(metadata["document_id"])
 
-    particulars = metadata["particulars"]
+    date = clean_text(metadata["notification_date"])
 
-    document_url = metadata["href"]
+    particulars = clean_text(metadata["particulars"])
+
+    url = clean_text(metadata["href"])
 
     filename = build_filename(
-        notification_date,
+        date,
         particulars,
     )
 
@@ -2123,18 +2532,18 @@ async def download_notification(
     print()
     print("#" * 78)
 
-    print(f"NOTIFICATION " f"{item_index + 1}/" f"{total_items}")
+    print(f"NOTIFICATION " f"{index + 1}/" f"{total}")
 
     print("#" * 78)
 
     print(
         "Document ID:",
-        (document_id or "(not decoded)"),
+        document_id,
     )
 
     print(
         "Notification Date:",
-        notification_date,
+        date,
     )
 
     print(
@@ -2146,38 +2555,51 @@ async def download_notification(
 
     print(
         " ",
-        document_url,
+        url,
     )
 
     # ========================================================
-    # RESUME
+    # RESUME / EXISTING FILE
     # ========================================================
 
     if destination.exists():
+
         try:
+
             size = destination.stat().st_size
 
         except Exception:
+
             size = 0
 
         if size > 0:
+
             print("ALREADY EXISTS - SKIPPING")
+
+            print(
+                "Existing bytes:",
+                size,
+            )
 
             upsert_manifest_row(
                 manifest_rows,
                 {
-                    "table_row": item_index + 1,
+                    "table_row": index + 1,
                     "document_id": document_id,
-                    "notification_date": notification_date,
+                    "notification_date": date,
                     "particulars": particulars,
                     "original_pdf": "",
                     "saved_filename": destination.name,
-                    "document_url": document_url,
+                    "document_url": url,
                     "status": "already-exists",
                 },
             )
 
-            return
+            return True
+
+    # ========================================================
+    # DOWNLOAD WITH EXPONENTIAL RETRIES
+    # ========================================================
 
     last_error = None
 
@@ -2185,24 +2607,27 @@ async def download_notification(
         1,
         DOWNLOAD_RETRY_ATTEMPTS + 1,
     ):
+
         print()
         print("DOWNLOAD ATTEMPT " f"{attempt}/" f"{DOWNLOAD_RETRY_ATTEMPTS}")
 
-        # ====================================================
-        # DIRECT ENDPOINT FIRST
-        # ====================================================
-
         try:
-            result = await try_direct_endpoint_download(
+
+            result = await download_pdf_direct(
                 context,
                 metadata,
                 destination,
             )
 
-            print("  DIRECT ENDPOINT SUCCESS")
+            print("  SUCCESS")
 
             print(
-                "  PDF bytes:",
+                "  Original PDF:",
+                repr(result["original_pdf"]),
+            )
+
+            print(
+                "  Saved bytes:",
                 result["bytes"],
             )
 
@@ -2216,110 +2641,75 @@ async def download_notification(
             upsert_manifest_row(
                 manifest_rows,
                 {
-                    "table_row": item_index + 1,
+                    "table_row": index + 1,
                     "document_id": document_id,
-                    "notification_date": notification_date,
+                    "notification_date": date,
                     "particulars": particulars,
-                    "original_pdf": result.get(
-                        "original_pdf",
-                        "",
-                    ),
+                    "original_pdf": result["original_pdf"],
                     "saved_filename": destination.name,
-                    "document_url": document_url,
-                    "status": "downloaded-direct-http",
+                    "document_url": url,
+                    "status": "downloaded",
                 },
             )
 
-            return
+            return True
 
         except Exception as exc:
+
             last_error = exc
 
             print(
-                "  Direct endpoint failed:",
+                "  FAILED:",
                 repr(exc),
             )
 
+            http_status = getattr(
+                exc,
+                "http_status",
+                None,
+            )
+
+            if http_status is not None:
+
+                print(
+                    "  HTTP status from error:",
+                    http_status,
+                )
+
             try:
+
                 if destination.exists():
+
                     destination.unlink()
 
             except Exception:
-                pass
 
-        # ====================================================
-        # POPUP FALLBACK
-        # ====================================================
-
-        print("  Using popup fallback...")
-
-        try:
-            result = await try_popup_fallback(
-                page,
-                context,
-                frame,
-                metadata,
-                destination,
-            )
-
-            print("  POPUP FALLBACK SUCCESS")
-
-            print(
-                "  Method:",
-                result.get(
-                    "method",
-                    "",
-                ),
-            )
-
-            print("  SAVED:")
-
-            print(
-                " ",
-                destination.name,
-            )
-
-            upsert_manifest_row(
-                manifest_rows,
-                {
-                    "table_row": item_index + 1,
-                    "document_id": document_id,
-                    "notification_date": notification_date,
-                    "particulars": particulars,
-                    "original_pdf": result.get(
-                        "original_pdf",
-                        "",
-                    ),
-                    "saved_filename": destination.name,
-                    "document_url": document_url,
-                    "status": "downloaded-popup-fallback",
-                },
-            )
-
-            return
-
-        except Exception as exc:
-            last_error = exc
-
-            print(
-                "  Popup fallback failed:",
-                repr(exc),
-            )
-
-            try:
-                if destination.exists():
-                    destination.unlink()
-
-            except Exception:
                 pass
 
         if attempt < DOWNLOAD_RETRY_ATTEMPTS:
-            print("  Retrying in " f"{DOWNLOAD_RETRY_DELAY_SECONDS}s...")
 
-            await asyncio.sleep(DOWNLOAD_RETRY_DELAY_SECONDS)
+            (
+                retry_delay,
+                retry_reason,
+            ) = calculate_retry_delay(
+                attempt,
+                last_error,
+            )
+
+            print(
+                "  Retry strategy:",
+                retry_reason,
+            )
+
+            print(
+                f"  Retrying in " f"{retry_delay}s...",
+                flush=True,
+            )
+
+            await asyncio.sleep(retry_delay)
 
     # ========================================================
-    # FAILED
+    # PERMANENT FAILURE
     # ========================================================
 
     error_text = clean_text(str(last_error or "Unknown failure"))
@@ -2330,16 +2720,18 @@ async def download_notification(
     upsert_manifest_row(
         manifest_rows,
         {
-            "table_row": item_index + 1,
+            "table_row": index + 1,
             "document_id": document_id,
-            "notification_date": notification_date,
+            "notification_date": date,
             "particulars": particulars,
             "original_pdf": "",
             "saved_filename": filename,
-            "document_url": document_url,
-            "status": ("ERROR after " f"{DOWNLOAD_RETRY_ATTEMPTS} " "attempts: " f"{error_text}"),
+            "document_url": url,
+            "status": ("ERROR: " + error_text),
         },
     )
+
+    return False
 
 
 # ============================================================
@@ -2348,16 +2740,18 @@ async def download_notification(
 
 
 async def process_all_notifications(
-    page,
     context,
     frame,
 ):
-    manifest_rows = load_manifest()
 
     print()
     print("=" * 78)
+
     print("NOTIFICATION DOWNLOAD")
+
     print("=" * 78)
+
+    manifest_rows = load_manifest()
 
     print(
         "Existing manifest rows:",
@@ -2369,60 +2763,120 @@ async def process_all_notifications(
         DOWNLOAD_DIR.resolve(),
     )
 
-    metadata_items = await collect_notification_metadata(frame)
+    print(
+        "Download retry attempts:",
+        DOWNLOAD_RETRY_ATTEMPTS,
+    )
 
-    total_items = len(metadata_items)
+    print(
+        "Normal retry base delay:",
+        f"{RETRY_BASE_DELAY_SECONDS}s",
+    )
+
+    print(
+        "403 retry base delay:",
+        f"{HTTP_403_BASE_DELAY_SECONDS}s",
+    )
+
+    print(
+        "Delay between downloads:",
+        f"{INTER_DOWNLOAD_DELAY_SECONDS}s",
+    )
+
+    metadata = await collect_notification_metadata(frame)
+
+    total = len(metadata)
 
     print()
     print(
         "Total notification documents:",
-        total_items,
+        total,
     )
 
-    for item_index, metadata in enumerate(metadata_items):
-        try:
-            await download_notification(
-                page=page,
-                context=context,
-                frame=frame,
-                metadata=metadata,
-                item_index=item_index,
-                total_items=total_items,
-                manifest_rows=manifest_rows,
-            )
+    download_started = time.monotonic()
 
-        except Exception as exc:
-            print()
+    successes = 0
+    failures = 0
+
+    for index, item in enumerate(metadata):
+
+        result = await download_notification(
+            context,
+            item,
+            index,
+            total,
+            manifest_rows,
+        )
+
+        if result:
+
+            successes += 1
+
+        else:
+
+            failures += 1
+
+        elapsed = time.monotonic() - download_started
+
+        completed = index + 1
+
+        average = elapsed / completed
+
+        remaining = total - completed
+
+        # Add expected 5-second inter-document delay
+        # to make ETA more realistic.
+        eta_seconds = average * remaining
+
+        if remaining > 0:
+
+            eta_seconds += INTER_DOWNLOAD_DELAY_SECONDS * remaining
+
+        print()
+        print(
+            (
+                "[PROGRESS] "
+                f"{completed}/{total} "
+                f"({completed / total * 100:.1f}%) | "
+                f"success={successes} "
+                f"failed={failures} | "
+                f"elapsed={elapsed / 60:.1f}m | "
+                f"ETA≈{eta_seconds / 60:.1f}m"
+            ),
+            flush=True,
+        )
+
+        # ====================================================
+        # 5 SECOND DELAY BETWEEN DOCUMENTS
+        # ====================================================
+
+        if completed < total:
+
             print(
-                "ERROR processing " f"notification {item_index + 1}:",
-                repr(exc),
+                ("[DELAY] Waiting " f"{INTER_DOWNLOAD_DELAY_SECONDS}s " "before next document..."),
+                flush=True,
             )
 
-            try:
-                await save_debug(
-                    page,
-                    ("notification_" f"{item_index + 1}_" "fatal_error"),
-                )
-
-            except Exception:
-                pass
+            await asyncio.sleep(INTER_DOWNLOAD_DELAY_SECONDS)
 
     rows = load_manifest()
 
-    downloaded = sum(1 for row in rows if row.get("status", "").startswith("downloaded"))
+    downloaded = sum(1 for row in rows if (row.get("status") == "downloaded"))
 
-    already_exists = sum(1 for row in rows if row.get("status") == "already-exists")
+    skipped = sum(1 for row in rows if (row.get("status") == "already-exists"))
 
-    errors = sum(1 for row in rows if row.get("status", "").startswith("ERROR"))
+    errors = sum(1 for row in rows if (row.get("status", "").startswith("ERROR")))
 
     print()
     print("=" * 78)
+
     print("FINAL SUMMARY")
+
     print("=" * 78)
 
     print(
-        "Notifications discovered:",
-        total_items,
+        "Documents discovered:",
+        total,
     )
 
     print(
@@ -2432,7 +2886,7 @@ async def process_all_notifications(
 
     print(
         "Already existed:",
-        already_exists,
+        skipped,
     )
 
     print(
@@ -2441,7 +2895,7 @@ async def process_all_notifications(
     )
 
     print(
-        "Download directory:",
+        "Output:",
         DOWNLOAD_DIR.resolve(),
     )
 
@@ -2450,7 +2904,10 @@ async def process_all_notifications(
         MANIFEST_FILE.resolve(),
     )
 
-    print("=" * 78)
+    print(
+        "Total download runtime:",
+        f"{(time.monotonic() - download_started) / 60:.2f} minutes",
+    )
 
 
 # ============================================================
@@ -2459,15 +2916,14 @@ async def process_all_notifications(
 
 
 async def main():
+
+    program_started = time.monotonic()
+
     async with async_playwright() as p:
 
         print()
 
-        if HEADLESS:
-            print("Launching HEADLESS Firefox...")
-
-        else:
-            print("Launching VISIBLE Firefox...")
+        print("Launching " + ("HEADLESS" if HEADLESS else "VISIBLE") + " Firefox...")
 
         browser = await p.firefox.launch(
             headless=HEADLESS,
@@ -2487,100 +2943,155 @@ async def main():
         page.set_default_timeout(DEFAULT_TIMEOUT)
 
         # ====================================================
-        # NETWORK DEBUG
-        #
-        # This is deliberately limited to AJAX/fetch responses
-        # likely related to MCA eBooks / notifications.
+        # REQUEST DEBUG
         # ====================================================
 
-        async def log_response(
+        def on_request(
+            request,
+        ):
+
+            try:
+
+                url = request.url
+
+                if (
+                    "/bin/ebook/service/" "documentMetadata" in url
+                    and "docCategory=Notifications" in url
+                ):
+
+                    notification_request_urls.append(url)
+
+                    if DEBUG_NETWORK:
+
+                        print(
+                            "[REQUEST]",
+                            url,
+                            flush=True,
+                        )
+
+            except Exception:
+
+                pass
+
+        page.on(
+            "request",
+            on_request,
+        )
+
+        # ====================================================
+        # RESPONSE DEBUG
+        # ====================================================
+
+        async def on_response(
             response,
         ):
-            try:
-                resource_type = response.request.resource_type
 
-                if resource_type not in {
+            try:
+
+                request = response.request
+
+                if request.resource_type not in {
                     "xhr",
                     "fetch",
                 }:
+
                     return
 
                 url = response.url
 
-                low = url.lower()
+                if "documentMetadata" not in url:
 
-                interesting = (
-                    "notification" in low or "circular" in low or "ebook" in low or "dms" in low
-                )
-
-                if not interesting:
                     return
 
-                print(
-                    "[AJAX]",
-                    response.status,
-                    url,
-                )
+                if DEBUG_NETWORK:
+
+                    print(
+                        "[AJAX]",
+                        response.status,
+                        url,
+                        flush=True,
+                    )
 
             except Exception:
+
                 pass
 
         page.on(
             "response",
-            log_response,
+            on_response,
         )
 
         try:
+
             # =================================================
-            # 1. HOME
+            # HOME
             # =================================================
 
             await open_home(page)
 
             # =================================================
-            # 2. NOTIFICATIONS MODULE
+            # NOTIFICATIONS MODULE
             # =================================================
 
-            notifications_context = await open_notifications_module(page)
+            frame = await open_notifications_module(page)
 
             # =================================================
-            # 3. SELECT COMPANIES ACT
+            # SELECT COMPANIES ACT
             # =================================================
 
-            await select_companies_act(
+            await select_and_lock_companies_act(
                 page,
-                notifications_context,
+                frame,
             )
 
             # =================================================
-            # 4. ROBUST GO + RESULTS
+            # GO
             # =================================================
 
-            notifications_context = await click_go_and_wait(
+            await click_go_and_wait(
                 page,
-                notifications_context,
+                frame,
             )
 
             # =================================================
-            # 5. ALL RESULTS
+            # SELECT ALL
             # =================================================
 
-            await select_all_results(
+            final_count = await select_all_results(
                 page,
-                notifications_context,
+                frame,
+            )
+
+            print()
+            print(
+                "Companies Act notifications:",
+                final_count,
             )
 
             # =================================================
-            # 6. DOWNLOAD
+            # FINAL TABLE DEBUG
+            # =================================================
+
+            if DEBUG_TABLE:
+
+                state = await get_notification_table_state(frame)
+
+                print_table_state(
+                    "[DEBUG BEFORE DOWNLOAD] ",
+                    state,
+                )
+
+            # =================================================
+            # DOWNLOAD
             # =================================================
 
             await process_all_notifications(
-                page,
                 context,
-                notifications_context,
+                frame,
             )
 
         except Exception as exc:
+
             print()
             print("=" * 78)
 
@@ -2592,17 +3103,24 @@ async def main():
             print("=" * 78)
 
             try:
+
                 await save_debug(
                     page,
                     "fatal_error",
                 )
 
             except Exception:
+
                 pass
 
             raise
 
         finally:
+
+            print()
+
+            debug("Total program runtime: " f"{time.monotonic() - program_started:.2f}s")
+
             await browser.close()
 
 
@@ -2611,9 +3129,12 @@ async def main():
 # ============================================================
 
 if __name__ == "__main__":
+
     try:
+
         asyncio.run(main())
 
     except KeyboardInterrupt:
+
         print()
         print("Script stopped.")
