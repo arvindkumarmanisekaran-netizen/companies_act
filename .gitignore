@@ -82,3 +82,7 @@ tempCodeRunnerFile.py
 # Logs
 *.log
 logs/
+
+scripts/egazette_debug/*
+scripts/egazette_mca_pdfs/*
+scripts/mca_companies_act_2013/*
