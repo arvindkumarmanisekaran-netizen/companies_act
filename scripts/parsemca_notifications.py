@@ -5,9 +5,16 @@ import base64
 import csv
 import re
 from pathlib import Path
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import (
+    urljoin,
+    urlparse,
+    parse_qs,
+    unquote,
+)
 
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import (
+    async_playwright,
+)
 
 # ============================================================
 # CONFIGURATION
@@ -23,29 +30,40 @@ TARGET_ACT = "The Companies Act, 2013"
 TARGET_ACT_DATA_ID = "J105_D"
 
 OUTPUT_ROOT = Path("mca_companies_act_2013")
+
 DOWNLOAD_DIR = OUTPUT_ROOT / "notifications"
+
 DEBUG_DIR = OUTPUT_ROOT / "debug" / "notifications"
+
 MANIFEST_FILE = DOWNLOAD_DIR / "downloads.csv"
 
-DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+DOWNLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+DEBUG_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
 HEADLESS = True
 
 DEFAULT_TIMEOUT = 30000
+
 NAVIGATION_RETRIES = 10
+
 ACT_OPTIONS_TIMEOUT_SECONDS = 60
-RESULTS_TIMEOUT_SECONDS = 60
+
+# Each Go strategy gets this long.
+GO_ATTEMPT_WAIT_SECONDS = 25
 
 DOWNLOAD_RETRY_ATTEMPTS = 3
 DOWNLOAD_RETRY_DELAY_SECONDS = 2
 
-# Direct HTTP endpoint is the preferred path.
 DIRECT_HTTP_TIMEOUT_MS = 120000
 
-# Only used when direct endpoint fails.
 POPUP_WAIT_SECONDS = 20
-DOWNLOAD_WAIT_SECONDS = 30
 
 
 # ============================================================
@@ -73,8 +91,9 @@ def load_manifest():
             "r",
             newline="",
             encoding="utf-8-sig",
-        ) as fh:
-            return list(csv.DictReader(fh))
+        ) as file:
+            return list(csv.DictReader(file))
+
     except Exception:
         return []
 
@@ -84,70 +103,134 @@ def save_manifest(rows):
         "w",
         newline="",
         encoding="utf-8-sig",
-    ) as fh:
+    ) as file:
+
         writer = csv.DictWriter(
-            fh,
+            file,
             fieldnames=MANIFEST_FIELDS,
             extrasaction="ignore",
         )
+
         writer.writeheader()
         writer.writerows(rows)
 
 
-def upsert_manifest_row(manifest_rows, row_data):
-    """
-    Keep one manifest row per notification.
+def upsert_manifest_row(
+    manifest_rows,
+    row_data,
+):
+    document_id = clean_text(
+        row_data.get(
+            "document_id",
+            "",
+        )
+    )
 
-    Prefer document_id as the unique key. If it is missing, fall back to
-    date + particulars.
-    """
-    key_doc = clean_text(row_data.get("document_id", ""))
-    key_date = clean_text(row_data.get("notification_date", ""))
-    key_particulars = clean_text(row_data.get("particulars", ""))
+    notification_date = clean_text(
+        row_data.get(
+            "notification_date",
+            "",
+        )
+    )
 
-    for idx, existing in enumerate(manifest_rows):
-        existing_doc = clean_text(existing.get("document_id", ""))
+    particulars = clean_text(
+        row_data.get(
+            "particulars",
+            "",
+        )
+    )
+
+    for index, existing in enumerate(manifest_rows):
+        existing_document_id = clean_text(
+            existing.get(
+                "document_id",
+                "",
+            )
+        )
 
         same = False
 
-        if key_doc and existing_doc:
-            same = key_doc == existing_doc
+        if document_id and existing_document_id:
+            same = document_id == existing_document_id
+
         else:
             same = (
-                clean_text(existing.get("notification_date", "")) == key_date
-                and clean_text(existing.get("particulars", "")) == key_particulars
+                clean_text(
+                    existing.get(
+                        "notification_date",
+                        "",
+                    )
+                )
+                == notification_date
+                and clean_text(
+                    existing.get(
+                        "particulars",
+                        "",
+                    )
+                )
+                == particulars
             )
 
         if same:
-            manifest_rows[idx] = row_data
+            manifest_rows[index] = row_data
+
             save_manifest(manifest_rows)
+
             return
 
     manifest_rows.append(row_data)
+
     save_manifest(manifest_rows)
 
 
 # ============================================================
-# GENERAL HELPERS
+# TEXT / FILENAME HELPERS
 # ============================================================
 
 
 def clean_text(value):
     value = value or ""
-    value = value.replace("\xa0", " ")
-    value = re.sub(r"\s+", " ", value)
+
+    value = value.replace(
+        "\xa0",
+        " ",
+    )
+
+    value = re.sub(
+        r"\s+",
+        " ",
+        value,
+    )
+
     return value.strip()
 
 
-def sanitize_filename_component(value):
+def sanitize_filename_component(
+    value,
+):
     value = clean_text(value)
-    value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", value)
-    value = re.sub(r"-{2,}", "-", value)
+
+    value = re.sub(
+        r'[<>:"/\\|?*\x00-\x1f]',
+        "-",
+        value,
+    )
+
+    value = re.sub(
+        r"-{2,}",
+        "-",
+        value,
+    )
+
     value = value.strip(" .")
+
     return value or "NA"
 
 
-def truncate_utf8(value, max_bytes):
+def truncate_utf8(
+    value,
+    max_bytes,
+):
     raw = value.encode("utf-8")
 
     if len(raw) <= max_bytes:
@@ -158,43 +241,60 @@ def truncate_utf8(value, max_bytes):
     while raw:
         try:
             return raw.decode("utf-8").rstrip()
+
         except UnicodeDecodeError:
             raw = raw[:-1]
 
     return ""
 
 
-def sortable_notification_date(value):
+def sortable_notification_date(
+    value,
+):
     value = clean_text(value)
 
-    for pattern in (
+    patterns = [
         r"(\d{1,2})/(\d{1,2})/(\d{4})",
         r"(\d{1,2})-(\d{1,2})-(\d{4})",
-    ):
-        match = re.fullmatch(pattern, value)
+    ]
 
-        if match:
-            day = int(match.group(1))
-            month = int(match.group(2))
-            year = int(match.group(3))
+    for pattern in patterns:
+        match = re.fullmatch(
+            pattern,
+            value,
+        )
 
-            return f"{year:04d}-{month:02d}-{day:02d}"
+        if not match:
+            continue
+
+        day = int(match.group(1))
+
+        month = int(match.group(2))
+
+        year = int(match.group(3))
+
+        return f"{year:04d}-" f"{month:02d}-" f"{day:02d}"
 
     return sanitize_filename_component(value)
 
 
-def strip_size_suffix(particulars):
+def strip_size_suffix(
+    particulars,
+):
     """
-    MCA link text can look like:
+    Example:
 
-        G.S.R. .... Rules, 2026. | 804KB
+    G.S.R. 725(E)-.... Rules, 2026. | 804KB
 
-    Keep the legal title, not the file-size UI text.
+    becomes:
+
+    G.S.R. 725(E)-.... Rules, 2026.
     """
+
     text = clean_text(particulars)
 
     text = re.sub(
-        r"\s*\|\s*\d+(?:\.\d+)?\s*(?:KB|MB|GB)\s*$",
+        (r"\s*\|\s*" r"\d+(?:\.\d+)?\s*" r"(?:KB|MB|GB)" r"\s*$"),
         "",
         text,
         flags=re.I,
@@ -203,12 +303,21 @@ def strip_size_suffix(particulars):
     return text.strip()
 
 
-def build_filename(notification_date, particulars, max_bytes=245):
-    date_prefix = sanitize_filename_component(sortable_notification_date(notification_date))
+def build_filename(
+    notification_date,
+    particulars,
+    max_bytes=245,
+):
+    date_part = sortable_notification_date(notification_date)
 
-    title = sanitize_filename_component(strip_size_suffix(particulars))
+    date_part = sanitize_filename_component(date_part)
 
-    prefix = f"{date_prefix} - "
+    title = strip_size_suffix(particulars)
+
+    title = sanitize_filename_component(title)
+
+    prefix = f"{date_part} - "
+
     suffix = ".pdf"
 
     filename = prefix + title + suffix
@@ -216,14 +325,24 @@ def build_filename(notification_date, particulars, max_bytes=245):
     if len(filename.encode("utf-8")) <= max_bytes:
         return filename
 
+    available = max_bytes - len(prefix.encode("utf-8")) - len(suffix.encode("utf-8"))
+
     available = max(
         30,
-        max_bytes - len(prefix.encode("utf-8")) - len(suffix.encode("utf-8")),
+        available,
     )
 
-    title = truncate_utf8(title, available)
+    title = truncate_utf8(
+        title,
+        available,
+    )
 
     return prefix + title + suffix
+
+
+# ============================================================
+# URL HELPERS
+# ============================================================
 
 
 def is_home_url(url):
@@ -249,45 +368,34 @@ def is_ebooks_url(url):
 def is_notifications_url(url):
     return bool(
         re.search(
-            r"/acts-rules/ebooks/notifications\.html(?:$|[?#])",
+            (r"/acts-rules/ebooks/" r"notifications\.html" r"(?:$|[?#])"),
             url or "",
             re.I,
         )
     )
 
 
-def looks_like_pdf(data):
-    if not data:
-        return False
-
-    # Some servers prepend whitespace/binary noise.
-    return data.find(b"%PDF-") >= 0
-
-
-def normalize_pdf_bytes(data):
-    pos = data.find(b"%PDF-")
-
-    if pos < 0:
-        return data
-
-    return data[pos:]
-
-
-def decode_document_id_from_url(url):
+def decode_document_id_from_url(
+    url,
+):
     """
     Example:
-        ?doc=Njc1OTQ4NjUx
-    decodes to:
-        675948651
+
+    doc=Njc1OTQ4NjUx
+
+    ->
+
+    675948651
     """
+
     try:
         query = parse_qs(urlparse(url).query)
+
         encoded = (query.get("doc") or [""])[0]
 
         if not encoded:
             return ""
 
-        # base64 may be unpadded
         encoded += "=" * (-len(encoded) % 4)
 
         decoded = base64.b64decode(encoded).decode(
@@ -296,20 +404,39 @@ def decode_document_id_from_url(url):
         )
 
         return clean_text(decoded)
+
     except Exception:
         return ""
 
 
-def filename_from_content_disposition(headers):
-    """
-    APIResponse.headers is a dict property in Playwright Python.
+# ============================================================
+# PDF HELPERS
+# ============================================================
 
-    Do NOT use:
-        await response.all_headers()
 
-    That method is not available on APIResponse in the environment that
-    produced the user's AttributeError.
-    """
+def looks_like_pdf(
+    data,
+):
+    if not data:
+        return False
+
+    return data.find(b"%PDF-") >= 0
+
+
+def normalize_pdf_bytes(
+    data,
+):
+    position = data.find(b"%PDF-")
+
+    if position < 0:
+        return data
+
+    return data[position:]
+
+
+def filename_from_content_disposition(
+    headers,
+):
     if not headers:
         return ""
 
@@ -323,18 +450,24 @@ def filename_from_content_disposition(headers):
     if not disposition:
         return ""
 
-    # RFC 5987 filename*=UTF-8''...
+    # --------------------------------------------------------
+    # filename*=UTF-8''name.pdf
+    # --------------------------------------------------------
+
     match = re.search(
-        r"filename\*\s*=\s*(?:UTF-8''|utf-8'')?([^;]+)",
+        (r"filename\*\s*=\s*" r"(?:UTF-8''|utf-8'')?" r"([^;]+)"),
         disposition,
         re.I,
     )
 
     if match:
-        from urllib.parse import unquote
-
         value = match.group(1).strip().strip("\"'")
+
         return clean_text(unquote(value))
+
+    # --------------------------------------------------------
+    # filename="name.pdf"
+    # --------------------------------------------------------
 
     match = re.search(
         r'filename\s*=\s*"([^"]+)"',
@@ -344,6 +477,10 @@ def filename_from_content_disposition(headers):
 
     if match:
         return clean_text(match.group(1))
+
+    # --------------------------------------------------------
+    # filename=name.pdf
+    # --------------------------------------------------------
 
     match = re.search(
         r"filename\s*=\s*([^;]+)",
@@ -362,7 +499,10 @@ def filename_from_content_disposition(headers):
 # ============================================================
 
 
-async def save_debug(page, name):
+async def save_debug(
+    page,
+    name,
+):
     safe_name = re.sub(
         r"[^A-Za-z0-9_-]+",
         "_",
@@ -370,17 +510,18 @@ async def save_debug(page, name):
     )
 
     try:
-        screenshot_path = DEBUG_DIR / f"{safe_name}.png"
+        screenshot = DEBUG_DIR / f"{safe_name}.png"
 
         await page.screenshot(
-            path=str(screenshot_path),
+            path=str(screenshot),
             full_page=True,
         )
 
         print(
             "  Screenshot:",
-            screenshot_path.resolve(),
+            screenshot.resolve(),
         )
+
     except Exception:
         pass
 
@@ -388,22 +529,25 @@ async def save_debug(page, name):
         try:
             html = await frame.content()
 
-            html_path = DEBUG_DIR / f"{safe_name}_frame_{frame_index}.html"
+            html_file = DEBUG_DIR / (f"{safe_name}_" f"frame_{frame_index}.html")
 
-            html_path.write_text(
+            html_file.write_text(
                 html,
                 encoding="utf-8",
             )
+
         except Exception:
             pass
 
 
 # ============================================================
-# MCA NAVIGATION
+# HOME
 # ============================================================
 
 
-async def open_home(page):
+async def open_home(
+    page,
+):
     print()
     print("=" * 78)
     print("OPENING MCA HOME")
@@ -429,40 +573,57 @@ async def open_home(page):
     )
 
     if response is not None and response.status >= 400:
-        raise RuntimeError(f"MCA home returned HTTP {response.status}")
+        raise RuntimeError("MCA home returned " f"HTTP {response.status}")
 
 
-async def find_acts_rules_link(page):
+# ============================================================
+# ACTS & RULES
+# ============================================================
+
+
+async def find_acts_rules_link(
+    page,
+):
     selectors = [
-        (".second-navigation " 'a[href="/content/mca/global/en/acts-rules.html"]'),
-        'a[href="/content/mca/global/en/acts-rules.html"]',
+        (".second-navigation " 'a[href="/content/mca/global/en/' 'acts-rules.html"]'),
+        ('a[href="/content/mca/global/en/' 'acts-rules.html"]'),
     ]
 
     for selector in selectors:
         locator = page.locator(selector)
 
-        for index in range(await locator.count()):
+        count = await locator.count()
+
+        for index in range(count):
             candidate = locator.nth(index)
 
             try:
                 if await candidate.is_visible():
                     return candidate
+
             except Exception:
                 pass
 
     return None
 
 
-async def click_notifications_real(page):
+# ============================================================
+# NOTIFICATIONS TAB
+# ============================================================
+
+
+async def click_notifications_real(
+    page,
+):
     print()
     print("Searching for Notifications tab...")
 
     selectors = [
         (".ebooknavigation " "a.menuClick" '[data-doccategory="Notifications"]'),
-        'a.menuClick[data-doccategory="Notifications"]',
-        'a[data-doccategory="Notifications"]',
-        'a[val="Notifications"]',
-        'a[data-redirect="/ebooks/notifications.html"]',
+        ("a.menuClick" '[data-doccategory="Notifications"]'),
+        ('a[data-doccategory="Notifications"]'),
+        ('a[val="Notifications"]'),
+        ('a[data-redirect="' '/ebooks/notifications.html"]'),
     ]
 
     for _ in range(100):
@@ -470,7 +631,9 @@ async def click_notifications_real(page):
             for selector in selectors:
                 try:
                     candidates = frame.locator(selector)
+
                     count = await candidates.count()
+
                 except Exception:
                     continue
 
@@ -480,6 +643,7 @@ async def click_notifications_real(page):
                     try:
                         if not await candidate.is_visible():
                             continue
+
                     except Exception:
                         continue
 
@@ -494,12 +658,13 @@ async def click_notifications_real(page):
                         await candidate.click(
                             timeout=10000,
                         )
+
                     except Exception:
                         await candidate.click(
                             force=True,
                         )
 
-                    for _ in range(100):
+                    for _ in range(150):
                         if is_notifications_url(page.url):
                             return True
 
@@ -512,39 +677,27 @@ async def click_notifications_real(page):
     return False
 
 
+# ============================================================
+# FIND NOTIFICATIONS CONTEXT
+# ============================================================
+
+
 async def find_notifications_context(
     page,
     timeout_seconds=20,
 ):
     loop = asyncio.get_running_loop()
+
     start = loop.time()
 
     while loop.time() - start < timeout_seconds:
         for frame in page.frames:
             try:
-                if await frame.locator("#DropDown_Act").count() > 0:
+                select = frame.locator("#DropDown_Act")
+
+                if await select.count() > 0:
                     return frame
-            except Exception:
-                pass
 
-            # Fallback: search for the Companies Act option.
-            try:
-                selects = frame.locator("select")
-
-                for i in range(await selects.count()):
-                    select = selects.nth(i)
-
-                    options = select.locator("option")
-
-                    for j in range(await options.count()):
-                        option = options.nth(j)
-
-                        text = clean_text(await option.inner_text())
-
-                        data_id = await option.get_attribute("data-id") or ""
-
-                        if text == TARGET_ACT or data_id == TARGET_ACT_DATA_ID:
-                            return frame
             except Exception:
                 pass
 
@@ -553,14 +706,23 @@ async def find_notifications_context(
     return None
 
 
-async def open_notifications_module(page):
+# ============================================================
+# OPEN NOTIFICATIONS MODULE
+# ============================================================
+
+
+async def open_notifications_module(
+    page,
+):
     for attempt in range(
         1,
         NAVIGATION_RETRIES + 1,
     ):
         print()
         print("=" * 78)
-        print("NOTIFICATIONS NAVIGATION ATTEMPT " f"{attempt}/{NAVIGATION_RETRIES}")
+
+        print("NOTIFICATIONS NAVIGATION ATTEMPT " f"{attempt}/" f"{NAVIGATION_RETRIES}")
+
         print("=" * 78)
 
         if not is_home_url(page.url):
@@ -571,7 +733,6 @@ async def open_notifications_module(page):
         if acts_link is None:
             print("Acts & Rules link not found.")
 
-            await open_home(page)
             continue
 
         print("Clicking Acts & Rules...")
@@ -580,6 +741,7 @@ async def open_notifications_module(page):
             await acts_link.click(
                 timeout=10000,
             )
+
         except Exception:
             await acts_link.click(
                 force=True,
@@ -587,7 +749,7 @@ async def open_notifications_module(page):
 
         ebooks_seen = False
 
-        for _ in range(200):
+        for _ in range(250):
             if is_ebooks_url(page.url):
                 ebooks_seen = True
                 break
@@ -595,7 +757,8 @@ async def open_notifications_module(page):
             await page.wait_for_timeout(50)
 
         if not ebooks_seen:
-            print("eBooks page was not reached.")
+            print("eBooks page not detected.")
+
             continue
 
         print(
@@ -631,7 +794,7 @@ async def open_notifications_module(page):
 
                 return frame
 
-        print("Using direct Notifications URL fallback...")
+        print("Using direct Notifications " "URL fallback...")
 
         response = await page.goto(
             NOTIFICATIONS_DIRECT_URL,
@@ -641,7 +804,7 @@ async def open_notifications_module(page):
 
         print(
             "Direct URL HTTP:",
-            response.status if response else None,
+            (response.status if response else None),
         )
 
         frame = await find_notifications_context(
@@ -652,11 +815,11 @@ async def open_notifications_module(page):
         if frame is not None:
             return frame
 
-    raise RuntimeError("Could not load Notifications module.")
+    raise RuntimeError("Could not load " "Notifications module.")
 
 
 # ============================================================
-# ACT FILTER
+# FIND ACT DROPDOWN
 # ============================================================
 
 
@@ -668,72 +831,59 @@ async def find_act_dropdown(
     print("Searching for Act dropdown containing " f"{TARGET_ACT!r}...")
 
     loop = asyncio.get_running_loop()
+
     start = loop.time()
 
     while loop.time() - start < ACT_OPTIONS_TIMEOUT_SECONDS:
         preferred = frame.locator("#DropDown_Act")
 
-        candidate_selects = []
-
         if await preferred.count() > 0:
-            candidate_selects.append(preferred.first)
+            dropdown = preferred.first
 
-        selects = frame.locator("select")
+            options = dropdown.locator("option")
 
-        for i in range(await selects.count()):
-            candidate_selects.append(selects.nth(i))
+            for option_index in range(await options.count()):
+                option = options.nth(option_index)
 
-        seen_ids = set()
-
-        for select in candidate_selects:
-            try:
-                select_id = await select.get_attribute("id") or ""
-
-                locator_key = select_id or str(
-                    await select.evaluate(
-                        "el => Array.from(document.querySelectorAll('select')).indexOf(el)"
-                    )
-                )
-
-                if locator_key in seen_ids:
-                    continue
-
-                seen_ids.add(locator_key)
-
-                options = select.locator("option")
-
-                for option_index in range(await options.count()):
-                    option = options.nth(option_index)
-
+                try:
                     text = clean_text(await option.inner_text())
 
                     data_id = await option.get_attribute("data-id") or ""
 
-                    if text == TARGET_ACT or data_id == TARGET_ACT_DATA_ID:
-                        print("Act dropdown found.")
+                except Exception:
+                    continue
 
-                        print(
-                            "  id:",
-                            repr(select_id),
-                        )
+                if text == TARGET_ACT or data_id == TARGET_ACT_DATA_ID:
+                    print("Act dropdown found.")
 
-                        return (
-                            select,
-                            option_index,
-                        )
-            except Exception:
-                continue
+                    print(
+                        "  id:",
+                        repr(await dropdown.get_attribute("id")),
+                    )
+
+                    return (
+                        dropdown,
+                        option_index,
+                    )
 
         await page.wait_for_timeout(250)
 
-    raise RuntimeError("Act dropdown containing " "The Companies Act, 2013 was not found.")
+    raise RuntimeError("The Companies Act, 2013 " "option was not found.")
+
+
+# ============================================================
+# SELECT COMPANIES ACT
+# ============================================================
 
 
 async def select_companies_act(
     page,
     frame,
 ):
-    dropdown, option_index = await find_act_dropdown(
+    (
+        dropdown,
+        option_index,
+    ) = await find_act_dropdown(
         page,
         frame,
     )
@@ -750,95 +900,148 @@ async def select_companies_act(
         selected,
     )
 
-    verification = await dropdown.evaluate("""
+    # --------------------------------------------------------
+    # MCA has inline onchange handlers. Although select_option
+    # already fires input/change, explicitly dispatch them
+    # again and call MCA's enable function if it exists.
+    # --------------------------------------------------------
+
+    state = await dropdown.evaluate("""
         select => {
+            try {
+                select.dispatchEvent(
+                    new Event(
+                        'input',
+                        {
+                            bubbles: true
+                        }
+                    )
+                );
+            }
+            catch (e) {}
+
+            try {
+                select.dispatchEvent(
+                    new Event(
+                        'change',
+                        {
+                            bubbles: true
+                        }
+                    )
+                );
+            }
+            catch (e) {}
+
+            try {
+                if (
+                    typeof window
+                        .enableclickGoButton
+                    === 'function'
+                ) {
+                    window
+                        .enableclickGoButton();
+                }
+            }
+            catch (e) {}
+
             const option =
                 select.options[
                     select.selectedIndex
                 ];
 
+            const go =
+                document.querySelector(
+                    '#clickGo'
+                );
+
             return {
                 index:
                     select.selectedIndex,
+
                 text:
-                    (
+                    option
+                    ? (
                         option.textContent
                         || ''
                     )
                     .replace(/\\s+/g, ' ')
-                    .trim(),
+                    .trim()
+                    : '',
+
                 value:
-                    option.value || '',
+                    option
+                    ? option.value || ''
+                    : '',
+
                 dataId:
-                    option.getAttribute(
-                        'data-id'
-                    ) || ''
+                    option
+                    ? (
+                        option.getAttribute(
+                            'data-id'
+                        ) || ''
+                    )
+                    : '',
+
+                goFound:
+                    !!go,
+
+                goDisabled:
+                    go
+                    ? !!go.disabled
+                    : null,
+
+                goDisabledAttribute:
+                    go
+                    ? go.getAttribute(
+                        'disabled'
+                    )
+                    : null,
+
+                goDisabled1:
+                    go
+                    ? go.getAttribute(
+                        'disabled1'
+                    )
+                    : null
             };
         }
         """)
 
     print(
         "Selected:",
-        verification,
+        {
+            "index": state.get("index"),
+            "text": state.get("text"),
+            "value": state.get("value"),
+            "dataId": state.get("dataId"),
+        },
     )
 
+    print(
+        "Go state after selection:",
+        {
+            "found": state.get("goFound"),
+            "disabled": state.get("goDisabled"),
+            "disabled-attr": state.get("goDisabledAttribute"),
+            "disabled1": state.get("goDisabled1"),
+        },
+    )
 
-async def find_go_button(frame):
-    selectors = [
-        "#clickGo",
-        'button:has-text("Go")',
-        'input[type="button"][value="Go"]',
-        'input[type="submit"][value="Go"]',
-        'a:has-text("Go")',
-    ]
+    if state.get("dataId") != TARGET_ACT_DATA_ID and state.get("text") != TARGET_ACT:
+        raise RuntimeError("Wrong Act selected.")
 
-    for selector in selectors:
-        candidates = frame.locator(selector)
-
-        for index in range(await candidates.count()):
-            candidate = candidates.nth(index)
-
-            try:
-                if await candidate.is_visible():
-                    return candidate
-            except Exception:
-                pass
-
-    return None
+    # Give MCA change handlers a moment.
+    await page.wait_for_timeout(750)
 
 
-async def click_go(
-    page,
+# ============================================================
+# NOTIFICATION LOCATOR
+# ============================================================
+
+
+def notifications_link_locator(
     frame,
 ):
-    go = await find_go_button(frame)
-
-    if go is None:
-        raise RuntimeError("Go button not found.")
-
-    print()
-    print("Clicking Go...")
-
-    try:
-        await go.click(
-            timeout=15000,
-        )
-    except Exception:
-        await go.click(
-            force=True,
-        )
-
-
-# ============================================================
-# RESULTS
-# ============================================================
-
-
-def notifications_link_locator(frame):
-    """
-    MCA notification document anchors currently use id="notifications"
-    and class="dmslink". The page has duplicate IDs, so locator() is used.
-    """
     return frame.locator(
         (
             "a#notifications.dmslink, "
@@ -849,39 +1052,435 @@ def notifications_link_locator(frame):
     )
 
 
-async def wait_for_notification_results(
-    page,
+# ============================================================
+# RESULTS CHECK
+# ============================================================
+
+
+async def notification_result_state(
+    frame,
 ):
-    print()
-    print("Waiting for notification results...")
+    try:
+        links = notifications_link_locator(frame)
 
+        count = await links.count()
+
+    except Exception:
+        count = 0
+
+    table_exists = False
+    rows = 0
+    processing_text = ""
+
+    # --------------------------------------------------------
+    # Known DataTables ID
+    # --------------------------------------------------------
+
+    try:
+        table = frame.locator("#notificationCircularResultTable")
+
+        table_exists = await table.count() > 0
+
+        if table_exists:
+            rows = await table.locator("tbody tr").count()
+
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # DataTables processing message
+    # --------------------------------------------------------
+
+    try:
+        processing = frame.locator(
+            ("#notificationCircularResultTable_processing, " ".dataTables_processing")
+        )
+
+        for index in range(await processing.count()):
+            item = processing.nth(index)
+
+            if await item.is_visible():
+                processing_text = clean_text(await item.inner_text())
+
+                break
+
+    except Exception:
+        pass
+
+    return {
+        "links": count,
+        "table_exists": table_exists,
+        "rows": rows,
+        "processing": processing_text,
+    }
+
+
+async def wait_for_notification_results_once(
+    page,
+    frame,
+    timeout_seconds,
+):
     loop = asyncio.get_running_loop()
+
     start = loop.time()
-    previous = None
 
-    while loop.time() - start < RESULTS_TIMEOUT_SECONDS:
-        for frame in page.frames:
-            try:
-                links = notifications_link_locator(frame)
+    last_state = None
+    last_print_second = -1
 
-                count = await links.count()
+    while loop.time() - start < timeout_seconds:
+        state = await notification_result_state(frame)
 
-                if count != previous:
-                    print(
-                        "  Notification links:",
-                        count,
-                    )
-                    previous = count
+        elapsed = int(loop.time() - start)
 
-                if count > 0:
-                    print("Notification results loaded.")
-                    return frame
-            except Exception:
-                pass
+        if state != last_state or elapsed != last_print_second:
+            print(
+                "  "
+                f"[{elapsed:02d}s] "
+                f"links={state['links']} "
+                f"rows={state['rows']} "
+                f"table={state['table_exists']} "
+                f"processing="
+                f"{state['processing']!r}"
+            )
+
+            last_state = state.copy()
+            last_print_second = elapsed
+
+        if state["links"] > 0:
+            return True
 
         await page.wait_for_timeout(250)
 
-    raise RuntimeError("Notification results did not load.")
+    return False
+
+
+# ============================================================
+# FIND GO
+# ============================================================
+
+
+async def find_go_button(
+    frame,
+):
+    selectors = [
+        "#clickGo",
+        'button:has-text("Go")',
+        'input[type="button"][value="Go"]',
+        'input[type="submit"][value="Go"]',
+    ]
+
+    for selector in selectors:
+        candidates = frame.locator(selector)
+
+        count = await candidates.count()
+
+        for index in range(count):
+            candidate = candidates.nth(index)
+
+            try:
+                if await candidate.is_visible():
+                    return candidate
+
+            except Exception:
+                pass
+
+    return None
+
+
+# ============================================================
+# ROBUST GO
+# ============================================================
+
+
+async def click_go_and_wait(
+    page,
+    frame,
+):
+    print()
+    print("=" * 78)
+    print("CLICKING GO")
+    print("=" * 78)
+
+    # ========================================================
+    # GO ATTEMPT 1: NORMAL REAL PLAYWRIGHT CLICK
+    # ========================================================
+
+    print()
+    print("GO ATTEMPT 1/3:")
+
+    print("  Real Playwright click")
+
+    go = await find_go_button(frame)
+
+    if go is None:
+        raise RuntimeError("Go button not found.")
+
+    try:
+        print(
+            "  disabled:",
+            await go.is_disabled(),
+        )
+
+    except Exception:
+        pass
+
+    try:
+        print(
+            "  disabled1:",
+            repr(await go.get_attribute("disabled1")),
+        )
+
+    except Exception:
+        pass
+
+    try:
+        await go.scroll_into_view_if_needed()
+
+    except Exception:
+        pass
+
+    try:
+        await go.click(
+            timeout=15000,
+        )
+
+        print("  Click completed.")
+
+    except Exception as exc:
+        print(
+            "  Normal click exception:",
+            repr(exc),
+        )
+
+    found = await wait_for_notification_results_once(
+        page,
+        frame,
+        GO_ATTEMPT_WAIT_SECONDS,
+    )
+
+    if found:
+        print()
+        print("Notification results loaded " "after normal click.")
+
+        return frame
+
+    # ========================================================
+    # GO ATTEMPT 2: FORCE REAL PLAYWRIGHT CLICK
+    # ========================================================
+
+    print()
+    print("GO ATTEMPT 2/3:")
+
+    print("  Force Playwright click")
+
+    go = await find_go_button(frame)
+
+    if go is None:
+        raise RuntimeError("Go button disappeared.")
+
+    # Remove literal HTML disabled attribute only if MCA left one.
+    # Do not replace the click handler.
+    try:
+        state = await go.evaluate("""
+            button => {
+                try {
+                    button.disabled = false;
+                }
+                catch (e) {}
+
+                try {
+                    button.removeAttribute(
+                        'disabled'
+                    );
+                }
+                catch (e) {}
+
+                return {
+                    disabled:
+                        !!button.disabled,
+                    disabled1:
+                        button.getAttribute(
+                            'disabled1'
+                        ),
+                    onclick:
+                        button.getAttribute(
+                            'onclick'
+                        )
+                };
+            }
+            """)
+
+        print(
+            "  Go DOM state:",
+            state,
+        )
+
+    except Exception as exc:
+        print(
+            "  Could not inspect Go:",
+            repr(exc),
+        )
+
+    try:
+        await go.click(
+            force=True,
+            timeout=15000,
+        )
+
+        print("  Force click completed.")
+
+    except Exception as exc:
+        print(
+            "  Force click exception:",
+            repr(exc),
+        )
+
+    found = await wait_for_notification_results_once(
+        page,
+        frame,
+        GO_ATTEMPT_WAIT_SECONDS,
+    )
+
+    if found:
+        print()
+        print("Notification results loaded " "after forced click.")
+
+        return frame
+
+    # ========================================================
+    # GO ATTEMPT 3: DOM CLICK
+    # ========================================================
+
+    print()
+    print("GO ATTEMPT 3/3:")
+
+    print("  MCA DOM click fallback")
+
+    result = await frame.evaluate("""
+        () => {
+            const select =
+                document.querySelector(
+                    '#DropDown_Act'
+                );
+
+            if (select) {
+                try {
+                    select.dispatchEvent(
+                        new Event(
+                            'input',
+                            {
+                                bubbles: true
+                            }
+                        )
+                    );
+                }
+                catch (e) {}
+
+                try {
+                    select.dispatchEvent(
+                        new Event(
+                            'change',
+                            {
+                                bubbles: true
+                            }
+                        )
+                    );
+                }
+                catch (e) {}
+            }
+
+            try {
+                if (
+                    typeof window
+                        .enableclickGoButton
+                    === 'function'
+                ) {
+                    window
+                        .enableclickGoButton();
+                }
+            }
+            catch (e) {}
+
+            const go =
+                document.querySelector(
+                    '#clickGo'
+                );
+
+            if (!go) {
+                return {
+                    ok: false,
+                    reason:
+                        '#clickGo not found'
+                };
+            }
+
+            try {
+                go.disabled = false;
+            }
+            catch (e) {}
+
+            try {
+                go.removeAttribute(
+                    'disabled'
+                );
+            }
+            catch (e) {}
+
+            const result = {
+                ok: true,
+                text:
+                    (
+                        go.textContent
+                        || ''
+                    )
+                    .replace(/\\s+/g, ' ')
+                    .trim(),
+                onclick:
+                    go.getAttribute(
+                        'onclick'
+                    ),
+                disabled1:
+                    go.getAttribute(
+                        'disabled1'
+                    )
+            };
+
+            go.click();
+
+            return result;
+        }
+        """)
+
+    print(
+        "  DOM click result:",
+        result,
+    )
+
+    found = await wait_for_notification_results_once(
+        page,
+        frame,
+        GO_ATTEMPT_WAIT_SECONDS,
+    )
+
+    if found:
+        print()
+        print("Notification results loaded " "after DOM click.")
+
+        return frame
+
+    await save_debug(
+        page,
+        "go_failed_no_notification_results",
+    )
+
+    raise RuntimeError(
+        "Go was triggered using all three " "methods but MCA returned no " "notification links."
+    )
+
+
+# ============================================================
+# SELECT ALL RESULTS
+# ============================================================
 
 
 async def select_all_results(
@@ -890,7 +1489,9 @@ async def select_all_results(
 ):
     print()
     print("=" * 78)
+
     print("SELECTING RESULTS PER PAGE = ALL")
+
     print("=" * 78)
 
     selectors = [
@@ -906,62 +1507,29 @@ async def select_all_results(
 
         if await candidate.count() > 0:
             dropdown = candidate.first
+
             break
 
     if dropdown is None:
-        # Generic fallback: find a select with an All / -1 option,
-        # excluding the Act selector.
-        selects = frame.locator("select")
-
-        for i in range(await selects.count()):
-            select = selects.nth(i)
-
-            select_id = await select.get_attribute("id") or ""
-
-            if select_id == "DropDown_Act":
-                continue
-
-            options = select.locator("option")
-
-            for j in range(await options.count()):
-                option = options.nth(j)
-
-                text = clean_text(await option.inner_text())
-
-                value = await option.get_attribute("value") or ""
-
-                if text.lower() == "all" or value == "-1":
-                    dropdown = select
-                    break
-
-            if dropdown is not None:
-                break
-
-    if dropdown is None:
-        raise RuntimeError("Results-per-page dropdown " "was not found.")
+        raise RuntimeError("Notification results-per-page " "dropdown not found.")
 
     print(
         "Results-per-page name:",
         repr(await dropdown.get_attribute("name")),
     )
 
-    selected = False
-
     try:
         await dropdown.select_option(value="-1")
-        selected = True
-    except Exception:
-        pass
 
-    if not selected:
+    except Exception:
         await dropdown.select_option(label="All")
 
     print("Selected All.")
 
-    previous = None
-    stable_rounds = 0
+    previous = -1
+    stable = 0
 
-    for _ in range(60):
+    for _ in range(120):
         count = await notifications_link_locator(frame).count()
 
         if count != previous:
@@ -969,12 +1537,14 @@ async def select_all_results(
                 "  Current document links:",
                 count,
             )
-            previous = count
-            stable_rounds = 0
-        else:
-            stable_rounds += 1
 
-        if count > 5 and stable_rounds >= 4:
+            previous = count
+            stable = 0
+
+        else:
+            stable += 1
+
+        if count > 5 and stable >= 5:
             break
 
         await page.wait_for_timeout(250)
@@ -990,7 +1560,7 @@ async def select_all_results(
 
 
 # ============================================================
-# METADATA EXTRACTION
+# METADATA
 # ============================================================
 
 DATE_PATTERN = re.compile(r"\b(\d{1,2}/\d{1,2}/\d{4})\b")
@@ -1019,9 +1589,10 @@ async def extract_notification_metadata(
     if await row.count() > 0:
         tds = row.locator("td")
 
-        for i in range(await tds.count()):
+        for index in range(await tds.count()):
             try:
-                cells.append(clean_text(await tds.nth(i).inner_text()))
+                cells.append(clean_text(await tds.nth(index).inner_text()))
+
             except Exception:
                 cells.append("")
 
@@ -1032,26 +1603,26 @@ async def extract_notification_metadata(
 
         if match:
             notification_date = match.group(1)
+
             break
 
     if not notification_date:
-        row_text = ""
-
         try:
             row_text = clean_text(await row.inner_text())
+
+            match = DATE_PATTERN.search(row_text)
+
+            if match:
+                notification_date = match.group(1)
+
         except Exception:
             pass
 
-        match = DATE_PATTERN.search(row_text)
-
-        if match:
-            notification_date = match.group(1)
-
     if not notification_date:
-        raise RuntimeError("Notification date could not " f"be extracted for {particulars!r}.")
+        raise RuntimeError("Notification date could not " f"be extracted for {particulars!r}")
 
     if not particulars:
-        raise RuntimeError("Notification particulars are empty.")
+        raise RuntimeError("Particulars are empty.")
 
     document_id = decode_document_id_from_url(href)
 
@@ -1069,7 +1640,9 @@ async def collect_notification_metadata(
 ):
     print()
     print("=" * 78)
+
     print("COLLECTING NOTIFICATION METADATA")
+
     print("=" * 78)
 
     links = notifications_link_locator(frame)
@@ -1098,7 +1671,7 @@ async def collect_notification_metadata(
 
         except Exception as exc:
             print(
-                f"  Metadata error at row " f"{index + 1}:",
+                "  Metadata error " f"row {index + 1}:",
                 repr(exc),
             )
 
@@ -1111,7 +1684,7 @@ async def collect_notification_metadata(
 
 
 # ============================================================
-# DIRECT HTTP DOWNLOAD
+# DIRECT HTTP PDF DOWNLOAD
 # ============================================================
 
 
@@ -1120,23 +1693,10 @@ async def try_direct_endpoint_download(
     metadata,
     destination,
 ):
-    """
-    Download the MCA DMS endpoint using the authenticated BrowserContext.
-
-    IMPORTANT:
-        APIResponse does NOT expose all_headers() in the Playwright version
-        that produced the user's error.
-
-    Correct:
-        headers = response.headers
-
-    Not:
-        await response.all_headers()
-    """
     url = metadata["href"]
 
     if not url:
-        raise RuntimeError("Notification document URL is empty.")
+        raise RuntimeError("Document URL is empty.")
 
     response = await context.request.get(
         url,
@@ -1144,13 +1704,23 @@ async def try_direct_endpoint_download(
         fail_on_status_code=False,
         headers={
             "Referer": NOTIFICATIONS_DIRECT_URL,
-            "Accept": ("application/pdf," "application/octet-stream;q=0.9," "*/*;q=0.8"),
+            "Accept": ("application/pdf," "application/octet-stream;" "q=0.9,*/*;q=0.8"),
         },
     )
 
     status = response.status
 
-    # FIX: APIResponse.headers is a property returning a dict.
+    # ========================================================
+    # IMPORTANT:
+    #
+    # APIResponse.headers is the correct property.
+    #
+    # Do NOT call:
+    #
+    #   await response.all_headers()
+    #
+    # ========================================================
+
     headers = response.headers
 
     content_type = clean_text(
@@ -1195,16 +1765,17 @@ async def try_direct_endpoint_download(
 
     if not looks_like_pdf(body):
         preview = clean_text(
-            body[:300].decode(
+            body[:400].decode(
                 "utf-8",
                 errors="ignore",
             )
         )
 
         raise RuntimeError(
-            "Direct endpoint did not return a PDF. "
+            "Direct endpoint did not "
+            "return PDF. "
             f"Content-Type={content_type!r}; "
-            f"body preview={preview!r}"
+            f"preview={preview!r}"
         )
 
     pdf_bytes = normalize_pdf_bytes(body)
@@ -1214,13 +1785,9 @@ async def try_direct_endpoint_download(
     original_pdf = filename_from_content_disposition(headers)
 
     if not original_pdf:
-        path_name = Path(urlparse(url).path).name
+        document_id = metadata.get("document_id") or "notification"
 
-        if path_name and "." in path_name:
-            original_pdf = path_name
-
-    if not original_pdf:
-        original_pdf = f"{metadata.get('document_id') or 'notification'}.pdf"
+        original_pdf = f"{document_id}.pdf"
 
     return {
         "original_pdf": original_pdf,
@@ -1231,92 +1798,47 @@ async def try_direct_endpoint_download(
 
 
 # ============================================================
-# POPUP / BROWSER FALLBACK
+# POPUP FALLBACK
 # ============================================================
 
 
-async def wait_for_download_event(
-    page,
-    trigger,
-    timeout_seconds,
-):
-    loop = asyncio.get_running_loop()
-    future = loop.create_future()
-
-    def on_download(download):
-        if not future.done():
-            future.set_result(download)
-
-    page.on(
-        "download",
-        on_download,
-    )
-
-    try:
-        await trigger()
-
-        try:
-            return await asyncio.wait_for(
-                future,
-                timeout=timeout_seconds,
-            )
-        except asyncio.TimeoutError:
-            return None
-
-    finally:
-        try:
-            page.remove_listener(
-                "download",
-                on_download,
-            )
-        except Exception:
-            pass
-
-
-async def try_popup_or_browser_fallback(
+async def try_popup_fallback(
     page,
     context,
     frame,
     metadata,
     destination,
 ):
-    """
-    Fallback path only.
-
-    Depending on MCA implementation, clicking a dmslink may:
-      * fire a browser download;
-      * open a popup/new tab;
-      * navigate a popup to a PDF endpoint.
-
-    We handle all three.
-    """
     source_index = metadata["source_index"]
 
     links = notifications_link_locator(frame)
 
     if source_index >= await links.count():
-        raise RuntimeError("Notification link disappeared " "before popup fallback.")
+        raise RuntimeError("Notification link disappeared.")
 
     link = links.nth(source_index)
 
     try:
         await link.scroll_into_view_if_needed()
+
     except Exception:
         pass
 
-    # --------------------------------------------------------
-    # Register both download and popup listeners BEFORE click.
-    # --------------------------------------------------------
+    loop = asyncio.get_running_loop()
 
-    download_future = asyncio.get_running_loop().create_future()
+    download_future = loop.create_future()
 
-    popup_future = asyncio.get_running_loop().create_future()
+    popup_future = loop.create_future()
 
-    def on_download(download):
+    def on_download(
+        download,
+    ):
         if not download_future.done():
             download_future.set_result(download)
 
-    def on_popup(popup):
+    def on_popup(
+        popup,
+    ):
         if not popup_future.done():
             popup_future.set_result(popup)
 
@@ -1335,6 +1857,7 @@ async def try_popup_or_browser_fallback(
             await link.click(
                 timeout=15000,
             )
+
         except Exception:
             await link.click(
                 force=True,
@@ -1346,14 +1869,14 @@ async def try_popup_or_browser_fallback(
                 popup_future,
             },
             timeout=POPUP_WAIT_SECONDS,
-            return_when=asyncio.FIRST_COMPLETED,
+            return_when=(asyncio.FIRST_COMPLETED),
         )
 
         # ----------------------------------------------------
-        # Case 1: direct browser download
+        # Browser download
         # ----------------------------------------------------
 
-        if download_future in done and not download_future.cancelled():
+        if download_future in done:
             download = download_future.result()
 
             original_pdf = clean_text(download.suggested_filename or "")
@@ -1366,10 +1889,10 @@ async def try_popup_or_browser_fallback(
             }
 
         # ----------------------------------------------------
-        # Case 2: popup opened
+        # Popup
         # ----------------------------------------------------
 
-        if popup_future in done and not popup_future.cancelled():
+        if popup_future in done:
             popup = popup_future.result()
 
             try:
@@ -1377,6 +1900,7 @@ async def try_popup_or_browser_fallback(
                     "domcontentloaded",
                     timeout=30000,
                 )
+
             except Exception:
                 pass
 
@@ -1387,7 +1911,10 @@ async def try_popup_or_browser_fallback(
                 popup_url,
             )
 
-            # A popup can itself start a download after creation.
+            # -----------------------------------------------
+            # Popup may subsequently create a download.
+            # -----------------------------------------------
+
             try:
                 if not download_future.done():
                     download = await asyncio.wait_for(
@@ -1401,6 +1928,7 @@ async def try_popup_or_browser_fallback(
 
                     try:
                         await popup.close()
+
                     except Exception:
                         pass
 
@@ -1408,15 +1936,18 @@ async def try_popup_or_browser_fallback(
                         "original_pdf": original_pdf or "notification.pdf",
                         "method": "popup-download",
                     }
+
             except asyncio.TimeoutError:
                 pass
 
-            # If popup is at a usable URL, fetch it with the same
-            # authenticated context.
+            # -----------------------------------------------
+            # Fetch popup URL
+            # -----------------------------------------------
+
             if popup_url and popup_url != "about:blank":
                 response = await context.request.get(
                     popup_url,
-                    timeout=DIRECT_HTTP_TIMEOUT_MS,
+                    timeout=(DIRECT_HTTP_TIMEOUT_MS),
                     fail_on_status_code=False,
                 )
 
@@ -1430,10 +1961,11 @@ async def try_popup_or_browser_fallback(
                     original_pdf = filename_from_content_disposition(headers)
 
                     if not original_pdf:
-                        original_pdf = Path(urlparse(popup_url).path).name or "notification.pdf"
+                        original_pdf = (metadata.get("document_id") or "notification") + ".pdf"
 
                     try:
                         await popup.close()
+
                     except Exception:
                         pass
 
@@ -1442,28 +1974,52 @@ async def try_popup_or_browser_fallback(
                         "method": "popup-http",
                     }
 
-            # Last popup attempt: inspect PDF/embed/iframe/object URL.
+            # -----------------------------------------------
+            # Look for embedded PDF URL
+            # -----------------------------------------------
+
             pdf_candidate = ""
 
-            for selector, attr in (
-                ("iframe", "src"),
-                ("embed", "src"),
-                ("object", "data"),
-                ('a[href*=".pdf"]', "href"),
-                ('a[href*="getdocument"]', "href"),
-            ):
+            selectors = [
+                (
+                    "iframe",
+                    "src",
+                ),
+                (
+                    "embed",
+                    "src",
+                ),
+                (
+                    "object",
+                    "data",
+                ),
+                (
+                    'a[href*="getdocument"]',
+                    "href",
+                ),
+                (
+                    'a[href*=".pdf"]',
+                    "href",
+                ),
+            ]
+
+            for selector, attribute in selectors:
                 try:
                     locator = popup.locator(selector)
 
-                    if await locator.count() > 0:
-                        value = await locator.first.get_attribute(attr) or ""
+                    if await locator.count() == 0:
+                        continue
 
-                        if value:
-                            pdf_candidate = urljoin(
-                                popup_url,
-                                value,
-                            )
-                            break
+                    value = await locator.first.get_attribute(attribute) or ""
+
+                    if value:
+                        pdf_candidate = urljoin(
+                            popup_url,
+                            value,
+                        )
+
+                        break
+
                 except Exception:
                     pass
 
@@ -1475,7 +2031,7 @@ async def try_popup_or_browser_fallback(
 
                 response = await context.request.get(
                     pdf_candidate,
-                    timeout=DIRECT_HTTP_TIMEOUT_MS,
+                    timeout=(DIRECT_HTTP_TIMEOUT_MS),
                     fail_on_status_code=False,
                 )
 
@@ -1486,14 +2042,14 @@ async def try_popup_or_browser_fallback(
 
                     destination.write_bytes(normalize_pdf_bytes(body))
 
-                    original_pdf = (
-                        filename_from_content_disposition(headers)
-                        or Path(urlparse(pdf_candidate).path).name
-                        or "notification.pdf"
-                    )
+                    original_pdf = filename_from_content_disposition(headers)
+
+                    if not original_pdf:
+                        original_pdf = (metadata.get("document_id") or "notification") + ".pdf"
 
                     try:
                         await popup.close()
+
                     except Exception:
                         pass
 
@@ -1504,10 +2060,11 @@ async def try_popup_or_browser_fallback(
 
             try:
                 await popup.close()
+
             except Exception:
                 pass
 
-        raise RuntimeError("Popup fallback did not produce a PDF.")
+        raise RuntimeError("Popup fallback did not " "produce a PDF.")
 
     finally:
         try:
@@ -1515,6 +2072,7 @@ async def try_popup_or_browser_fallback(
                 "download",
                 on_download,
             )
+
         except Exception:
             pass
 
@@ -1523,6 +2081,7 @@ async def try_popup_or_browser_fallback(
                 "popup",
                 on_popup,
             )
+
         except Exception:
             pass
 
@@ -1552,7 +2111,7 @@ async def download_notification(
 
     particulars = metadata["particulars"]
 
-    source_href = metadata["href"]
+    document_url = metadata["href"]
 
     filename = build_filename(
         notification_date,
@@ -1563,12 +2122,14 @@ async def download_notification(
 
     print()
     print("#" * 78)
+
     print(f"NOTIFICATION " f"{item_index + 1}/" f"{total_items}")
+
     print("#" * 78)
 
     print(
         "Document ID:",
-        document_id or "(not decoded)",
+        (document_id or "(not decoded)"),
     )
 
     print(
@@ -1585,21 +2146,22 @@ async def download_notification(
 
     print(
         " ",
-        source_href,
+        document_url,
     )
 
-    # --------------------------------------------------------
-    # Resume / physical duplicate check
-    # --------------------------------------------------------
+    # ========================================================
+    # RESUME
+    # ========================================================
 
     if destination.exists():
-        size = destination.stat().st_size
+        try:
+            size = destination.stat().st_size
+
+        except Exception:
+            size = 0
 
         if size > 0:
-            print(
-                "ALREADY EXISTS - SKIPPING:",
-                destination.name,
-            )
+            print("ALREADY EXISTS - SKIPPING")
 
             upsert_manifest_row(
                 manifest_rows,
@@ -1610,7 +2172,7 @@ async def download_notification(
                     "particulars": particulars,
                     "original_pdf": "",
                     "saved_filename": destination.name,
-                    "document_url": source_href,
+                    "document_url": document_url,
                     "status": "already-exists",
                 },
             )
@@ -1624,10 +2186,10 @@ async def download_notification(
         DOWNLOAD_RETRY_ATTEMPTS + 1,
     ):
         print()
-        print(f"DOWNLOAD ATTEMPT " f"{attempt}/" f"{DOWNLOAD_RETRY_ATTEMPTS}")
+        print("DOWNLOAD ATTEMPT " f"{attempt}/" f"{DOWNLOAD_RETRY_ATTEMPTS}")
 
         # ====================================================
-        # PREFERRED METHOD: DIRECT AUTHENTICATED HTTP
+        # DIRECT ENDPOINT FIRST
         # ====================================================
 
         try:
@@ -1658,9 +2220,12 @@ async def download_notification(
                     "document_id": document_id,
                     "notification_date": notification_date,
                     "particulars": particulars,
-                    "original_pdf": result["original_pdf"],
+                    "original_pdf": result.get(
+                        "original_pdf",
+                        "",
+                    ),
                     "saved_filename": destination.name,
-                    "document_url": source_href,
+                    "document_url": document_url,
                     "status": "downloaded-direct-http",
                 },
             )
@@ -1675,21 +2240,21 @@ async def download_notification(
                 repr(exc),
             )
 
-            # Never leave a partial/corrupt file behind.
             try:
                 if destination.exists():
                     destination.unlink()
+
             except Exception:
                 pass
 
         # ====================================================
-        # FALLBACK: REAL BROWSER / POPUP
+        # POPUP FALLBACK
         # ====================================================
 
-        try:
-            print("  Using popup fallback...")
+        print("  Using popup fallback...")
 
-            result = await try_popup_or_browser_fallback(
+        try:
+            result = await try_popup_fallback(
                 page,
                 context,
                 frame,
@@ -1726,7 +2291,7 @@ async def download_notification(
                         "",
                     ),
                     "saved_filename": destination.name,
-                    "document_url": source_href,
+                    "document_url": document_url,
                     "status": "downloaded-popup-fallback",
                 },
             )
@@ -1744,6 +2309,7 @@ async def download_notification(
             try:
                 if destination.exists():
                     destination.unlink()
+
             except Exception:
                 pass
 
@@ -1752,16 +2318,14 @@ async def download_notification(
 
             await asyncio.sleep(DOWNLOAD_RETRY_DELAY_SECONDS)
 
-    # --------------------------------------------------------
-    # All attempts failed
-    # --------------------------------------------------------
+    # ========================================================
+    # FAILED
+    # ========================================================
 
-    error_text = clean_text(str(last_error or "Unknown download failure"))
+    error_text = clean_text(str(last_error or "Unknown failure"))
 
     print()
-    print("ERROR: all " f"{DOWNLOAD_RETRY_ATTEMPTS} " "attempts failed.")
-
-    print("Recording failure and moving on.")
+    print("ERROR: all download " "attempts failed.")
 
     upsert_manifest_row(
         manifest_rows,
@@ -1772,14 +2336,14 @@ async def download_notification(
             "particulars": particulars,
             "original_pdf": "",
             "saved_filename": filename,
-            "document_url": source_href,
-            "status": ("ERROR after " f"{DOWNLOAD_RETRY_ATTEMPTS} attempts: " f"{error_text}"),
+            "document_url": document_url,
+            "status": ("ERROR after " f"{DOWNLOAD_RETRY_ATTEMPTS} " "attempts: " f"{error_text}"),
         },
     )
 
 
 # ============================================================
-# PROCESS ALL NOTIFICATIONS
+# PROCESS ALL
 # ============================================================
 
 
@@ -1830,21 +2394,18 @@ async def process_all_notifications(
         except Exception as exc:
             print()
             print(
-                "ERROR processing notification " f"{item_index + 1}:",
+                "ERROR processing " f"notification {item_index + 1}:",
                 repr(exc),
             )
 
             try:
                 await save_debug(
                     page,
-                    (f"notification_" f"{item_index + 1}_" "fatal_item_error"),
+                    ("notification_" f"{item_index + 1}_" "fatal_error"),
                 )
+
             except Exception:
                 pass
-
-    # ========================================================
-    # FINAL SUMMARY
-    # ========================================================
 
     rows = load_manifest()
 
@@ -1899,16 +2460,15 @@ async def process_all_notifications(
 
 async def main():
     async with async_playwright() as p:
+
         print()
 
         if HEADLESS:
             print("Launching HEADLESS Firefox...")
+
         else:
             print("Launching VISIBLE Firefox...")
 
-        # Firefox only:
-        # Chromium has previously received MCA/Akamai HTTP 403
-        # in this environment.
         browser = await p.firefox.launch(
             headless=HEADLESS,
         )
@@ -1926,6 +2486,50 @@ async def main():
 
         page.set_default_timeout(DEFAULT_TIMEOUT)
 
+        # ====================================================
+        # NETWORK DEBUG
+        #
+        # This is deliberately limited to AJAX/fetch responses
+        # likely related to MCA eBooks / notifications.
+        # ====================================================
+
+        async def log_response(
+            response,
+        ):
+            try:
+                resource_type = response.request.resource_type
+
+                if resource_type not in {
+                    "xhr",
+                    "fetch",
+                }:
+                    return
+
+                url = response.url
+
+                low = url.lower()
+
+                interesting = (
+                    "notification" in low or "circular" in low or "ebook" in low or "dms" in low
+                )
+
+                if not interesting:
+                    return
+
+                print(
+                    "[AJAX]",
+                    response.status,
+                    url,
+                )
+
+            except Exception:
+                pass
+
+        page.on(
+            "response",
+            log_response,
+        )
+
         try:
             # =================================================
             # 1. HOME
@@ -1940,7 +2544,7 @@ async def main():
             notifications_context = await open_notifications_module(page)
 
             # =================================================
-            # 3. ACT = THE COMPANIES ACT, 2013
+            # 3. SELECT COMPANIES ACT
             # =================================================
 
             await select_companies_act(
@@ -1949,18 +2553,16 @@ async def main():
             )
 
             # =================================================
-            # 4. GO
+            # 4. ROBUST GO + RESULTS
             # =================================================
 
-            await click_go(
+            notifications_context = await click_go_and_wait(
                 page,
                 notifications_context,
             )
 
-            notifications_context = await wait_for_notification_results(page)
-
             # =================================================
-            # 5. RESULTS PER PAGE = ALL
+            # 5. ALL RESULTS
             # =================================================
 
             await select_all_results(
@@ -1969,7 +2571,7 @@ async def main():
             )
 
             # =================================================
-            # 6. DOWNLOAD ALL NOTIFICATIONS
+            # 6. DOWNLOAD
             # =================================================
 
             await process_all_notifications(
@@ -1994,6 +2596,7 @@ async def main():
                     page,
                     "fatal_error",
                 )
+
             except Exception:
                 pass
 
