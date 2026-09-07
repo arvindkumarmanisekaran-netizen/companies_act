@@ -7,38 +7,24 @@ from pathlib import Path
 
 from playwright.async_api import async_playwright
 
-
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-START_URL = (
-    "https://www.mca.gov.in/content/mca/global/en/home.html"
-)
+START_URL = "https://www.mca.gov.in/content/mca/global/en/home.html"
 
-RULES_DIRECT_URL = (
-    "https://www.mca.gov.in/content/mca/global/en/"
-    "acts-rules/ebooks/rules.html"
-)
+RULES_DIRECT_URL = "https://www.mca.gov.in/content/mca/global/en/" "acts-rules/ebooks/rules.html"
 
 TARGET_ACT = "The Companies Act, 2013"
 TARGET_ACT_DATA_ID = "J105_D"
 
-OUTPUT_ROOT = Path(
-    "mca_companies_act_2013"
-)
+OUTPUT_ROOT = Path("mca_companies_act_2013")
 
-DOWNLOAD_DIR = (
-    OUTPUT_ROOT / "rules"
-)
+DOWNLOAD_DIR = OUTPUT_ROOT / "rules"
 
-DEBUG_DIR = (
-    OUTPUT_ROOT / "debug"
-)
+DEBUG_DIR = OUTPUT_ROOT / "debug"
 
-MANIFEST_FILE = (
-    DOWNLOAD_DIR / "downloads.csv"
-)
+MANIFEST_FILE = DOWNLOAD_DIR / "downloads.csv"
 
 DOWNLOAD_DIR.mkdir(
     parents=True,
@@ -58,6 +44,13 @@ ACT_OPTIONS_TIMEOUT_SECONDS = 60
 GO_RESULTS_TIMEOUT_SECONDS = 60
 
 DOWNLOAD_WAIT_SECONDS = 30
+
+# Retry each individual Current Rule download before recording a failure
+# and moving on to the next item.
+DOWNLOAD_RETRY_ATTEMPTS = 3
+
+# Small pause between attempts so MCA has time to reset modal/download state.
+DOWNLOAD_RETRY_DELAY_SECONDS = 2
 
 
 # ============================================================
@@ -86,9 +79,7 @@ def load_manifest():
             newline="",
             encoding="utf-8-sig",
         ) as file:
-            return list(
-                csv.DictReader(file)
-            )
+            return list(csv.DictReader(file))
 
     except Exception:
         return []
@@ -113,6 +104,7 @@ def save_manifest(rows):
 # ============================================================
 # GENERAL HELPERS
 # ============================================================
+
 
 def clean_text(value):
     value = value or ""
@@ -165,6 +157,7 @@ def is_rules_url(url):
 # DEBUG
 # ============================================================
 
+
 async def save_debug(
     page,
     name,
@@ -176,15 +169,10 @@ async def save_debug(
     )
 
     try:
-        screenshot_path = (
-            DEBUG_DIR
-            / f"{safe_name}.png"
-        )
+        screenshot_path = DEBUG_DIR / f"{safe_name}.png"
 
         await page.screenshot(
-            path=str(
-                screenshot_path
-            ),
+            path=str(screenshot_path),
             full_page=True,
         )
 
@@ -196,19 +184,11 @@ async def save_debug(
     except Exception:
         pass
 
-    for frame_index, frame in enumerate(
-        page.frames
-    ):
+    for frame_index, frame in enumerate(page.frames):
         try:
             html = await frame.content()
 
-            html_path = (
-                DEBUG_DIR
-                / (
-                    f"{safe_name}_"
-                    f"frame_{frame_index}.html"
-                )
-            )
+            html_path = DEBUG_DIR / (f"{safe_name}_" f"frame_{frame_index}.html")
 
             html_path.write_text(
                 html,
@@ -218,14 +198,13 @@ async def save_debug(
         except Exception:
             pass
 
-    print(
-        f"  Debug saved: {name}"
-    )
+    print(f"  Debug saved: {name}")
 
 
 # ============================================================
 # FILENAME HELPERS
 # ============================================================
+
 
 def sanitize_filename_component(
     value,
@@ -246,9 +225,7 @@ def sanitize_filename_component(
         value,
     )
 
-    value = value.strip(
-        " ."
-    )
+    value = value.strip(" .")
 
     return value or "NA"
 
@@ -257,9 +234,7 @@ def truncate_utf8(
     value,
     max_bytes,
 ):
-    raw = value.encode(
-        "utf-8"
-    )
+    raw = value.encode("utf-8")
 
     if len(raw) <= max_bytes:
         return value
@@ -268,12 +243,7 @@ def truncate_utf8(
 
     while raw:
         try:
-            return (
-                raw.decode(
-                    "utf-8"
-                ).rstrip()
-                + "…"
-            )
+            return raw.decode("utf-8").rstrip() + "…"
 
         except UnicodeDecodeError:
             raw = raw[:-1]
@@ -285,23 +255,68 @@ def normalize_notification_date(
     value,
 ):
     """
+    Convert MCA notification date to filesystem-safe DD-MM-YYYY.
+
     Example:
-
-    31/03/2014
-        ->
-    31-03-2014
-
-    Slash cannot be part of a Linux filename.
+        31/03/2014 -> 31-03-2014
     """
 
     value = clean_text(value)
 
-    value = value.replace(
+    return value.replace(
         "/",
         "-",
     )
 
-    return value
+
+def sortable_notification_date(
+    value,
+):
+    """
+    Convert MCA notification date to sortable ISO-style YYYY-MM-DD.
+
+    Examples:
+        31/03/2014 -> 2014-03-31
+        11/10/2018 -> 2018-10-11
+
+    If MCA returns an unexpected date format, fall back to a
+    filename-safe version instead of failing the scrape.
+    """
+
+    value = clean_text(value)
+
+    match = re.fullmatch(
+        r"(\d{1,2})/(\d{1,2})/(\d{4})",
+        value,
+    )
+
+    if match:
+        day = int(match.group(1))
+
+        month = int(match.group(2))
+
+        year = int(match.group(3))
+
+        return f"{year:04d}-" f"{month:02d}-" f"{day:02d}"
+
+    # Also tolerate already-hyphenated DD-MM-YYYY.
+    match = re.fullmatch(
+        r"(\d{1,2})-(\d{1,2})-(\d{4})",
+        value,
+    )
+
+    if match:
+        day = int(match.group(1))
+
+        month = int(match.group(2))
+
+        year = int(match.group(3))
+
+        return f"{year:04d}-" f"{month:02d}-" f"{day:02d}"
+
+    fallback = sanitize_filename_component(value)
+
+    return fallback or "0000-00-00"
 
 
 def build_filename(
@@ -312,49 +327,41 @@ def build_filename(
     max_bytes=245,
 ):
     """
-    Required logical format:
+    NEW SORTABLE NAMING CONVENTION:
 
-    Rules - Rule Contains - Notification Date - Individual Rule .pdf
+        YYYY-MM-DD - Rules - Rule Contains
+        - DD-MM-YYYY - Individual Rule .pdf
 
     Example:
 
-    Chapter I The Companies (Specification of Definitions Details) Rules, 2014
-    - Rule 1 to 4
-    - 31-03-2014
-    - 1. Short Title and Commencement .pdf
+        2014-03-31 - Chapter I The Companies
+        (Specification of Definitions Details) Rules, 2014
+        - Rule 1 to 4 - 31-03-2014
+        - 1. Short Title and Commencement .pdf
+
+    The leading ISO date means ordinary filename sorting places
+    documents in notification-date order.
+
+    The original DD-MM-YYYY date is intentionally retained later
+    in the filename so all of the previous metadata remains visible.
     """
 
-    rules_name = (
-        sanitize_filename_component(
-            rules_name
-        )
-    )
+    sortable_date = sortable_notification_date(notification_date)
 
-    rule_contains = (
-        sanitize_filename_component(
-            rule_contains
-        )
-    )
+    sortable_date = sanitize_filename_component(sortable_date)
 
-    notification_date = (
-        normalize_notification_date(
-            notification_date
-        )
-    )
+    rules_name = sanitize_filename_component(rules_name)
 
-    notification_date = (
-        sanitize_filename_component(
-            notification_date
-        )
-    )
+    rule_contains = sanitize_filename_component(rule_contains)
 
-    rule_title = (
-        sanitize_filename_component(
-            rule_title
-        )
-    )
+    notification_date = normalize_notification_date(notification_date)
+
+    notification_date = sanitize_filename_component(notification_date)
+
+    rule_title = sanitize_filename_component(rule_title)
 
     components = [
+        sortable_date,
         rules_name,
         rule_contains,
         notification_date,
@@ -365,83 +372,56 @@ def build_filename(
     separator = " - "
 
     def compose():
-        return (
-            separator.join(
-                components
-            )
-            + suffix
-        )
+        return separator.join(components) + suffix
 
     filename = compose()
 
-    if (
-        len(
-            filename.encode("utf-8")
-        )
-        <= max_bytes
-    ):
+    if len(filename.encode("utf-8")) <= max_bytes:
         return filename
 
-    # --------------------------------------------------------
-    # Preserve important metadata while shortening long names.
-    # Prefer shortening Rules title first, then rule title.
-    # --------------------------------------------------------
-
+    # Preserve the sortable date, Rule Contains and notification date.
+    # Shorten the Rules title first, then the individual rule title.
     shrink_order = [
-        0,
-        3,
         1,
+        4,
+        2,
     ]
 
-    while (
-        len(
-            compose().encode("utf-8")
-        )
-        > max_bytes
-    ):
+    while len(compose().encode("utf-8")) > max_bytes:
         changed = False
 
         for index in shrink_order:
-            current = components[
-                index
-            ]
+            current = components[index]
 
-            current_bytes = len(
-                current.encode("utf-8")
-            )
+            current_bytes = len(current.encode("utf-8"))
 
             if current_bytes <= 30:
                 continue
 
-            components[index] = (
-                truncate_utf8(
-                    current,
-                    current_bytes - 10,
-                )
+            components[index] = truncate_utf8(
+                current,
+                current_bytes - 10,
             )
 
             changed = True
+
             break
 
         if not changed:
             break
 
-    filename = compose()
-
-    return filename
+    return compose()
 
 
 # ============================================================
 # DUPLICATE CHECK
 # ============================================================
 
+
 def destination_exists(
     filename,
 ):
-    destination = (
-        DOWNLOAD_DIR
-        / filename
-    )
+    destination = DOWNLOAD_DIR / filename
 
     return destination.exists()
 
@@ -449,6 +429,7 @@ def destination_exists(
 # ============================================================
 # MCA HOME
 # ============================================================
+
 
 async def open_home(page):
     print()
@@ -468,9 +449,7 @@ async def open_home(page):
             response.status,
         )
 
-    await page.wait_for_timeout(
-        1500
-    )
+    await page.wait_for_timeout(1500)
 
     print(
         "URL:",
@@ -486,55 +465,32 @@ async def open_home(page):
     except Exception:
         pass
 
-    if (
-        response is not None
-        and response.status >= 400
-    ):
-        raise RuntimeError(
-            "MCA home returned "
-            f"HTTP {response.status}"
-        )
+    if response is not None and response.status >= 400:
+        raise RuntimeError("MCA home returned " f"HTTP {response.status}")
 
 
 # ============================================================
 # FIND ACTS & RULES LINK
 # ============================================================
 
+
 async def find_acts_rules_link(
     page,
 ):
     selectors = [
-        (
-            '.second-navigation '
-            'a[href="/content/mca/global/en/acts-rules.html"]'
-        ),
-        (
-            'a[href="/content/mca/global/en/acts-rules.html"]'
-        ),
+        (".second-navigation " 'a[href="/content/mca/global/en/acts-rules.html"]'),
+        ('a[href="/content/mca/global/en/acts-rules.html"]'),
     ]
 
     for selector in selectors:
-        locator = (
-            page.locator(
-                selector
-            )
-        )
+        locator = page.locator(selector)
 
-        count = (
-            await locator.count()
-        )
+        count = await locator.count()
 
-        print(
-            f"Acts & Rules selector "
-            f"{selector!r}: {count}"
-        )
+        print(f"Acts & Rules selector " f"{selector!r}: {count}")
 
-        for index in range(
-            count
-        ):
-            candidate = (
-                locator.nth(index)
-            )
+        for index in range(count):
+            candidate = locator.nth(index)
 
             try:
                 if await candidate.is_visible():
@@ -550,53 +506,34 @@ async def find_acts_rules_link(
 # WAIT FOR RULES FORM
 # ============================================================
 
+
 async def wait_for_rules_form(
     page,
     timeout_seconds=20,
 ):
-    loop = (
-        asyncio.get_running_loop()
-    )
+    loop = asyncio.get_running_loop()
 
     start = loop.time()
 
-    while (
-        loop.time() - start
-        < timeout_seconds
-    ):
+    while loop.time() - start < timeout_seconds:
         for (
             frame_index,
             frame,
-        ) in enumerate(
-            page.frames
-        ):
+        ) in enumerate(page.frames):
             try:
-                dropdown = (
-                    frame.locator(
-                        "#DropDown_RuleAct"
-                    )
-                )
+                dropdown = frame.locator("#DropDown_RuleAct")
 
-                if (
-                    await dropdown.count()
-                    == 0
-                ):
+                if await dropdown.count() == 0:
                     continue
 
-                print(
-                    "#DropDown_RuleAct "
-                    "found in frame "
-                    f"#{frame_index}"
-                )
+                print("#DropDown_RuleAct " "found in frame " f"#{frame_index}")
 
                 return frame
 
             except Exception:
                 pass
 
-        await page.wait_for_timeout(
-            100
-        )
+        await page.wait_for_timeout(100)
 
     return None
 
@@ -605,71 +542,39 @@ async def wait_for_rules_form(
 # CLICK RULES
 # ============================================================
 
+
 async def click_rules_real(
     page,
 ):
     print()
-    print(
-        "Searching for Rules link "
-        "for real Playwright click..."
-    )
+    print("Searching for Rules link " "for real Playwright click...")
 
     selectors = [
-        (
-            '.ebooknavigation '
-            'a.menuClick'
-            '[data-doccategory="Rules"]'
-        ),
-        (
-            'a.menuClick'
-            '[data-doccategory="Rules"]'
-            '[data-redirect="/ebooks/rules.html"]'
-        ),
-        (
-            'a[data-doccategory="Rules"]'
-            '[data-redirect="/ebooks/rules.html"]'
-        ),
-        (
-            'a[val="Rules"]'
-            '[data-redirect="/ebooks/rules.html"]'
-        ),
+        (".ebooknavigation " "a.menuClick" '[data-doccategory="Rules"]'),
+        ("a.menuClick" '[data-doccategory="Rules"]' '[data-redirect="/ebooks/rules.html"]'),
+        ('a[data-doccategory="Rules"]' '[data-redirect="/ebooks/rules.html"]'),
+        ('a[val="Rules"]' '[data-redirect="/ebooks/rules.html"]'),
     ]
 
-    for _ in range(
-        100
-    ):
+    for _ in range(100):
         for (
             frame_index,
             frame,
-        ) in enumerate(
-            page.frames
-        ):
+        ) in enumerate(page.frames):
             for selector in selectors:
                 try:
-                    candidates = (
-                        frame.locator(
-                            selector
-                        )
-                    )
+                    candidates = frame.locator(selector)
 
-                    count = (
-                        await candidates.count()
-                    )
+                    count = await candidates.count()
 
                 except Exception:
                     continue
 
-                for index in range(
-                    count
-                ):
-                    candidate = (
-                        candidates.nth(index)
-                    )
+                for index in range(count):
+                    candidate = candidates.nth(index)
 
                     try:
-                        visible = (
-                            await candidate.is_visible()
-                        )
+                        visible = await candidate.is_visible()
 
                     except Exception:
                         continue
@@ -677,11 +582,7 @@ async def click_rules_real(
                     if not visible:
                         continue
 
-                    print(
-                        "  Rules link found "
-                        "in frame "
-                        f"#{frame_index}"
-                    )
+                    print("  Rules link found " "in frame " f"#{frame_index}")
 
                     print(
                         "  Selector:",
@@ -693,10 +594,7 @@ async def click_rules_real(
                         page.url,
                     )
 
-                    print(
-                        "  Performing real "
-                        "Playwright click..."
-                    )
+                    print("  Performing real " "Playwright click...")
 
                     try:
                         await candidate.click(
@@ -708,14 +606,8 @@ async def click_rules_real(
                             force=True,
                         )
 
-                    for _ in range(
-                        100
-                    ):
-                        if (
-                            is_rules_url(
-                                page.url
-                            )
-                        ):
+                    for _ in range(100):
+                        if is_rules_url(page.url):
                             print(
                                 "  Rules URL reached:",
                                 page.url,
@@ -723,15 +615,11 @@ async def click_rules_real(
 
                             return True
 
-                        await page.wait_for_timeout(
-                            100
-                        )
+                        await page.wait_for_timeout(100)
 
                     return False
 
-        await page.wait_for_timeout(
-            100
-        )
+        await page.wait_for_timeout(100)
 
     return False
 
@@ -739,6 +627,7 @@ async def click_rules_real(
 # ============================================================
 # OPEN RULES MODULE
 # ============================================================
+
 
 async def open_rules_module(
     page,
@@ -750,59 +639,37 @@ async def open_rules_module(
         print()
         print("=" * 78)
 
-        print(
-            "RULES NAVIGATION ATTEMPT "
-            f"{attempt}/"
-            f"{NAVIGATION_RETRIES}"
-        )
+        print("RULES NAVIGATION ATTEMPT " f"{attempt}/" f"{NAVIGATION_RETRIES}")
 
         print("=" * 78)
 
-        if not is_home_url(
-            page.url
-        ):
-            await open_home(
-                page
-            )
+        if not is_home_url(page.url):
+            await open_home(page)
 
         print()
         print("=" * 78)
         print("OPENING ACTS & RULES")
         print("=" * 78)
 
-        acts_link = (
-            await find_acts_rules_link(
-                page
-            )
-        )
+        acts_link = await find_acts_rules_link(page)
 
         if acts_link is None:
-            await open_home(
-                page
-            )
+            await open_home(page)
 
             continue
 
-        print(
-            "Acts & Rules link found."
-        )
+        print("Acts & Rules link found.")
 
         try:
             print(
                 "href:",
-                repr(
-                    await acts_link.get_attribute(
-                        "href"
-                    )
-                ),
+                repr(await acts_link.get_attribute("href")),
             )
 
         except Exception:
             pass
 
-        print(
-            "Clicking Acts & Rules..."
-        )
+        print("Clicking Acts & Rules...")
 
         try:
             await acts_link.click(
@@ -816,23 +683,15 @@ async def open_rules_module(
 
         ebooks_seen = False
 
-        for _ in range(
-            200
-        ):
-            if is_ebooks_url(
-                page.url
-            ):
+        for _ in range(200):
+            if is_ebooks_url(page.url):
                 ebooks_seen = True
                 break
 
-            await page.wait_for_timeout(
-                50
-            )
+            await page.wait_for_timeout(50)
 
         if not ebooks_seen:
-            await open_home(
-                page
-            )
+            await open_home(page)
 
             continue
 
@@ -841,27 +700,19 @@ async def open_rules_module(
             page.url,
         )
 
-        await page.wait_for_timeout(
-            500
-        )
+        await page.wait_for_timeout(500)
 
         print()
         print("=" * 78)
         print("CLICKING RULES")
         print("=" * 78)
 
-        clicked = (
-            await click_rules_real(
-                page
-            )
-        )
+        clicked = await click_rules_real(page)
 
         if clicked:
-            frame = (
-                await wait_for_rules_form(
-                    page,
-                    timeout_seconds=20,
-                )
+            frame = await wait_for_rules_form(
+                page,
+                timeout_seconds=20,
             )
 
             if frame is not None:
@@ -884,9 +735,7 @@ async def open_rules_module(
 
                 return frame
 
-        print(
-            "Using direct Rules URL fallback..."
-        )
+        print("Using direct Rules URL fallback...")
 
         await page.goto(
             RULES_DIRECT_URL,
@@ -894,49 +743,36 @@ async def open_rules_module(
             timeout=60000,
         )
 
-        frame = (
-            await wait_for_rules_form(
-                page,
-                timeout_seconds=20,
-            )
+        frame = await wait_for_rules_form(
+            page,
+            timeout_seconds=20,
         )
 
         if frame is not None:
             return frame
 
-    raise RuntimeError(
-        "Could not load Rules module."
-    )
+    raise RuntimeError("Could not load Rules module.")
 
 
 # ============================================================
 # WAIT FOR ACT OPTIONS
 # ============================================================
 
+
 async def wait_for_act_options(
     page,
     frame,
 ):
     print()
-    print(
-        "Waiting for MCA to populate "
-        "Act dropdown options..."
-    )
+    print("Waiting for MCA to populate " "Act dropdown options...")
 
-    loop = (
-        asyncio.get_running_loop()
-    )
+    loop = asyncio.get_running_loop()
 
     start = loop.time()
     previous_count = None
 
-    while (
-        loop.time() - start
-        < ACT_OPTIONS_TIMEOUT_SECONDS
-    ):
-        result = (
-            await frame.evaluate(
-                """
+    while loop.time() - start < ACT_OPTIONS_TIMEOUT_SECONDS:
+        result = await frame.evaluate("""
                 () => {
                     const select =
                         document.querySelector(
@@ -1008,18 +844,11 @@ async def wait_for_act_options(
                             dump
                     };
                 }
-                """
-            )
-        )
+                """)
 
-        count = (
-            result["count"]
-        )
+        count = result["count"]
 
-        if (
-            count
-            != previous_count
-        ):
+        if count != previous_count:
             print(
                 "  Current option count:",
                 count,
@@ -1028,46 +857,33 @@ async def wait_for_act_options(
             previous_count = count
 
         if result["found"]:
-            print(
-                "  Companies Act option "
-                "is now available."
-            )
+            print("  Companies Act option " "is now available.")
 
             return result
 
-        await page.wait_for_timeout(
-            250
-        )
+        await page.wait_for_timeout(250)
 
-    raise RuntimeError(
-        "Act dropdown options "
-        "did not load."
-    )
+    raise RuntimeError("Act dropdown options " "did not load.")
 
 
 # ============================================================
 # SELECT COMPANIES ACT
 # ============================================================
 
+
 async def select_companies_act(
     page,
     frame,
 ):
-    result = (
-        await wait_for_act_options(
-            page,
-            frame,
-        )
+    result = await wait_for_act_options(
+        page,
+        frame,
     )
 
     print()
-    print(
-        "Act options:"
-    )
+    print("Act options:")
 
-    for option in result[
-        "options"
-    ]:
+    for option in result["options"]:
         print(
             f"  [{option['index']}] "
             f"{option['text']!r} "
@@ -1079,9 +895,7 @@ async def select_companies_act(
             f"{option['selected']}"
         )
 
-    target = (
-        result["target"]
-    )
+    target = result["target"]
 
     print()
     print(
@@ -1099,16 +913,10 @@ async def select_companies_act(
         target["dataId"],
     )
 
-    dropdown = (
-        frame.locator(
-            "#DropDown_RuleAct"
-        )
-    )
+    dropdown = frame.locator("#DropDown_RuleAct")
 
-    selected = (
-        await dropdown.select_option(
-            index=target["index"],
-        )
+    selected = await dropdown.select_option(
+        index=target["index"],
     )
 
     print(
@@ -1116,9 +924,7 @@ async def select_companies_act(
         selected,
     )
 
-    verification = (
-        await frame.evaluate(
-            """
+    verification = await frame.evaluate("""
             () => {
                 const s =
                     document.querySelector(
@@ -1151,14 +957,10 @@ async def select_companies_act(
                         ) || ''
                 };
             }
-            """
-        )
-    )
+            """)
 
     print()
-    print(
-        "ACT SELECTED"
-    )
+    print("ACT SELECTED")
 
     print(
         "Selected index:",
@@ -1180,6 +982,7 @@ async def select_companies_act(
 # CLICK GO
 # ============================================================
 
+
 async def click_go_button(
     page,
     frame,
@@ -1189,11 +992,7 @@ async def click_go_button(
     print("CLICKING GO")
     print("=" * 78)
 
-    go = (
-        frame.locator(
-            "#clickGo"
-        )
-    )
+    go = frame.locator("#clickGo")
 
     await go.wait_for(
         state="attached",
@@ -1212,106 +1011,63 @@ async def click_go_button(
 
     print(
         "Go disabled1:",
-        repr(
-            await go.get_attribute(
-                "disabled1"
-            )
-        ),
+        repr(await go.get_attribute("disabled1")),
     )
 
-    await page.wait_for_timeout(
-        500
-    )
+    await page.wait_for_timeout(500)
 
-    print(
-        "Clicking Go with "
-        "real Playwright click..."
-    )
+    print("Clicking Go with " "real Playwright click...")
 
     try:
         await go.click(
             timeout=15000,
         )
 
-        print(
-            "Go clicked normally."
-        )
+        print("Go clicked normally.")
 
     except Exception:
         await go.click(
             force=True,
         )
 
-        print(
-            "Go clicked forcefully."
-        )
+        print("Go clicked forcefully.")
 
 
 # ============================================================
 # WAIT FOR RULE RESULTS
 # ============================================================
 
+
 async def wait_for_rules_results(
     page,
 ):
     print()
-    print(
-        "Waiting for Rules results..."
-    )
+    print("Waiting for Rules results...")
 
-    loop = (
-        asyncio.get_running_loop()
-    )
+    loop = asyncio.get_running_loop()
 
     start = loop.time()
 
-    while (
-        loop.time() - start
-        < GO_RESULTS_TIMEOUT_SECONDS
-    ):
+    while loop.time() - start < GO_RESULTS_TIMEOUT_SECONDS:
         for (
             frame_index,
             frame,
-        ) in enumerate(
-            page.frames
-        ):
+        ) in enumerate(page.frames):
             try:
-                table = (
-                    frame.locator(
-                        "#rulesContainer"
-                    )
-                )
+                table = frame.locator("#rulesContainer")
 
-                if (
-                    await table.count()
-                    == 0
-                ):
+                if await table.count() == 0:
                     continue
 
-                rows = (
-                    frame.locator(
-                        "#rulesContainer tbody tr"
-                    )
-                )
+                rows = frame.locator("#rulesContainer tbody tr")
 
-                row_count = (
-                    await rows.count()
-                )
+                row_count = await rows.count()
 
                 useful = 0
 
-                for index in range(
-                    row_count
-                ):
+                for index in range(row_count):
                     try:
-                        if (
-                            await rows.nth(
-                                index
-                            ).locator(
-                                ".ruleLink"
-                            ).count()
-                            > 0
-                        ):
+                        if await rows.nth(index).locator(".ruleLink").count() > 0:
                             useful += 1
 
                     except Exception:
@@ -1327,9 +1083,7 @@ async def wait_for_rules_results(
 
                 if useful:
                     print()
-                    print(
-                        "Rules table loaded."
-                    )
+                    print("Rules table loaded.")
 
                     print(
                         "Initial displayed rows:",
@@ -1341,18 +1095,15 @@ async def wait_for_rules_results(
             except Exception:
                 pass
 
-        await page.wait_for_timeout(
-            250
-        )
+        await page.wait_for_timeout(250)
 
-    raise RuntimeError(
-        "Rules results did not load."
-    )
+    raise RuntimeError("Rules results did not load.")
 
 
 # ============================================================
 # SELECT ACT + GO
 # ============================================================
+
 
 async def select_companies_act_and_click_go(
     page,
@@ -1360,23 +1111,17 @@ async def select_companies_act_and_click_go(
     print()
     print("=" * 78)
 
-    print(
-        "SELECTING THE COMPANIES ACT, 2013"
-    )
+    print("SELECTING THE COMPANIES ACT, 2013")
 
     print("=" * 78)
 
-    frame = (
-        await wait_for_rules_form(
-            page,
-            timeout_seconds=30,
-        )
+    frame = await wait_for_rules_form(
+        page,
+        timeout_seconds=30,
     )
 
     if frame is None:
-        raise RuntimeError(
-            "Act dropdown not found."
-        )
+        raise RuntimeError("Act dropdown not found.")
 
     await select_companies_act(
         page,
@@ -1388,16 +1133,13 @@ async def select_companies_act_and_click_go(
         frame,
     )
 
-    return (
-        await wait_for_rules_results(
-            page
-        )
-    )
+    return await wait_for_rules_results(page)
 
 
 # ============================================================
 # SELECT ALL 54 ROWS
 # ============================================================
+
 
 async def select_all_rules(
     frame,
@@ -1407,11 +1149,7 @@ async def select_all_rules(
     print("SELECTING ALL RULE ROWS")
     print("=" * 78)
 
-    rows = (
-        frame.locator(
-            "#rulesContainer tbody tr"
-        )
-    )
+    rows = frame.locator("#rulesContainer tbody tr")
 
     print(
         "Current displayed rows:",
@@ -1419,103 +1157,52 @@ async def select_all_rules(
     )
 
     selectors = [
-        (
-            'select['
-            'name="rulesContainer_length"'
-            ']'
-        ),
-        (
-            'select['
-            'aria-controls="rulesContainer"'
-            ']'
-        ),
-        (
-            '.dataTables_length select'
-        ),
+        ("select[" 'name="rulesContainer_length"' "]"),
+        ("select[" 'aria-controls="rulesContainer"' "]"),
+        (".dataTables_length select"),
     ]
 
     dropdown = None
 
     for selector in selectors:
-        candidate = (
-            frame.locator(
-                selector
-            )
-        )
+        candidate = frame.locator(selector)
 
-        if (
-            await candidate.count()
-            > 0
-        ):
-            print(
-                "  Length selector matched:"
-            )
+        if await candidate.count() > 0:
+            print("  Length selector matched:")
 
             print(
                 "   ",
                 selector,
             )
 
-            dropdown = (
-                candidate.first
-            )
+            dropdown = candidate.first
 
             break
 
     if dropdown is None:
-        raise RuntimeError(
-            "Rows-per-page dropdown "
-            "not found."
-        )
+        raise RuntimeError("Rows-per-page dropdown " "not found.")
 
-    print(
-        "DataTables length "
-        "dropdown found."
-    )
+    print("DataTables length " "dropdown found.")
 
-    options = (
-        dropdown.locator(
-            "option"
-        )
-    )
+    options = dropdown.locator("option")
 
-    print(
-        "Options:"
-    )
+    print("Options:")
 
-    for index in range(
-        await options.count()
-    ):
-        option = (
-            options.nth(index)
-        )
+    for index in range(await options.count()):
+        option = options.nth(index)
 
         print(
             " ",
-            repr(
-                await option.get_attribute(
-                    "value"
-                )
-            ),
+            repr(await option.get_attribute("value")),
             "=>",
-            repr(
-                clean_text(
-                    await option.inner_text()
-                )
-            ),
+            repr(clean_text(await option.inner_text())),
         )
 
-    await dropdown.select_option(
-        value="-1"
-    )
+    await dropdown.select_option(value="-1")
 
-    print(
-        "Selected value=-1 / All."
-    )
+    print("Selected value=-1 / All.")
 
-    await asyncio.sleep(
-        1.5
-    )
+    await asyncio.sleep(1.5)
 
     print(
         "Final displayed rows:",
@@ -1527,6 +1214,7 @@ async def select_all_rules(
 # RULE POPUP LOCATOR
 # ============================================================
 
+
 def rule_popup_locator(
     frame,
 ):
@@ -1536,12 +1224,10 @@ def rule_popup_locator(
             ".contentContainer "
             "ol.rulesListPopContainer "
             "li.pop a.rulePopup, "
-
             ".resultContentContainer "
             ".contentContainer "
             "ol.rulesListPopContainer "
             "li.pop a.rulePopup, "
-
             "ol.rulesListPopContainer "
             "li.pop a.rulePopup"
         )
@@ -1551,6 +1237,7 @@ def rule_popup_locator(
 # ============================================================
 # TABLE ROW METADATA
 # ============================================================
+
 
 async def extract_table_row_metadata(
     row,
@@ -1566,34 +1253,20 @@ async def extract_table_row_metadata(
     classes, so position fallback is supported.
     """
 
-    cells = (
-        row.locator(
-            "td"
-        )
-    )
+    cells = row.locator("td")
 
-    cell_count = (
-        await cells.count()
-    )
+    cell_count = await cells.count()
 
     texts = []
 
-    for index in range(
-        cell_count
-    ):
+    for index in range(cell_count):
         try:
-            text = clean_text(
-                await cells.nth(
-                    index
-                ).inner_text()
-            )
+            text = clean_text(await cells.nth(index).inner_text())
 
         except Exception:
             text = ""
 
-        texts.append(
-            text
-        )
+        texts.append(text)
 
     # --------------------------------------------------------
     # Based on screenshot:
@@ -1604,23 +1277,11 @@ async def extract_table_row_metadata(
     # td 3 = arrow
     # --------------------------------------------------------
 
-    rules_name = (
-        texts[0]
-        if len(texts) > 0
-        else ""
-    )
+    rules_name = texts[0] if len(texts) > 0 else ""
 
-    rule_contains = (
-        texts[1]
-        if len(texts) > 1
-        else ""
-    )
+    rule_contains = texts[1] if len(texts) > 1 else ""
 
-    notification_date = (
-        texts[2]
-        if len(texts) > 2
-        else ""
-    )
+    notification_date = texts[2] if len(texts) > 2 else ""
 
     # --------------------------------------------------------
     # If first cell contains the .ruleLink, prefer its
@@ -1628,36 +1289,21 @@ async def extract_table_row_metadata(
     # --------------------------------------------------------
 
     try:
-        rule_link = (
-            row.locator(
-                ".ruleLink"
-            ).first
-        )
+        rule_link = row.locator(".ruleLink").first
 
-        link_text = clean_text(
-            await rule_link.inner_text()
-        )
+        link_text = clean_text(await rule_link.inner_text())
 
         if link_text:
-            rules_name = (
-                link_text
-            )
+            rules_name = link_text
 
     except Exception:
         pass
 
     return {
-        "rules":
-            rules_name,
-
-        "rule_contains":
-            rule_contains,
-
-        "notification_date":
-            notification_date,
-
-        "cells":
-            texts,
+        "rules": rules_name,
+        "rule_contains": rule_contains,
+        "notification_date": notification_date,
+        "cells": texts,
     }
 
 
@@ -1665,76 +1311,44 @@ async def extract_table_row_metadata(
 # OPEN RULE TABLE ROW
 # ============================================================
 
+
 async def open_rule_table_row(
     frame,
     row_index,
 ):
-    rows = (
-        frame.locator(
-            "#rulesContainer tbody tr"
-        )
-    )
+    rows = frame.locator("#rulesContainer tbody tr")
 
-    row_count = (
-        await rows.count()
-    )
+    row_count = await rows.count()
 
-    if (
-        row_index
-        >= row_count
-    ):
-        raise RuntimeError(
-            "Table row disappeared."
-        )
+    if row_index >= row_count:
+        raise RuntimeError("Table row disappeared.")
 
-    row = (
-        rows.nth(
-            row_index
-        )
-    )
+    row = rows.nth(row_index)
 
-    metadata = (
-        await extract_table_row_metadata(
-            row
-        )
-    )
+    metadata = await extract_table_row_metadata(row)
 
-    rule_link = (
-        row.locator(
-            ".ruleLink"
-        ).first
-    )
+    rule_link = row.locator(".ruleLink").first
 
     print()
     print("#" * 78)
 
-    print(
-        f"RULE TABLE ROW "
-        f"{row_index + 1}/"
-        f"{row_count}"
-    )
+    print(f"RULE TABLE ROW " f"{row_index + 1}/" f"{row_count}")
 
     print("#" * 78)
 
     print(
         "Rules:",
-        repr(
-            metadata["rules"]
-        ),
+        repr(metadata["rules"]),
     )
 
     print(
         "Rule Contains:",
-        repr(
-            metadata["rule_contains"]
-        ),
+        repr(metadata["rule_contains"]),
     )
 
     print(
         "Notification Date:",
-        repr(
-            metadata["notification_date"]
-        ),
+        repr(metadata["notification_date"]),
     )
 
     print(
@@ -1758,20 +1372,14 @@ async def open_rule_table_row(
             force=True,
         )
 
-    popup_links = (
-        rule_popup_locator(
-            frame
-        )
-    )
+    popup_links = rule_popup_locator(frame)
 
     await popup_links.first.wait_for(
         state="visible",
         timeout=30000,
     )
 
-    popup_count = (
-        await popup_links.count()
-    )
+    popup_count = await popup_links.count()
 
     print(
         "rulePopup count:",
@@ -1788,26 +1396,17 @@ async def open_rule_table_row(
 # ACTIVE MODAL
 # ============================================================
 
+
 async def get_active_modal(
     frame,
 ):
-    candidates = (
-        frame.locator(
-            ".modal-dialog.modal-sm"
-        )
-    )
+    candidates = frame.locator(".modal-dialog.modal-sm")
 
-    for index in range(
-        await candidates.count()
-    ):
-        candidate = (
-            candidates.nth(index)
-        )
+    for index in range(await candidates.count()):
+        candidate = candidates.nth(index)
 
         try:
-            if (
-                await candidate.is_visible()
-            ):
+            if await candidate.is_visible():
                 return candidate
 
         except Exception:
@@ -1819,21 +1418,13 @@ async def get_active_modal(
 async def wait_active_modal(
     frame,
 ):
-    for _ in range(
-        80
-    ):
-        modal = (
-            await get_active_modal(
-                frame
-            )
-        )
+    for _ in range(80):
+        modal = await get_active_modal(frame)
 
         if modal is not None:
             return modal
 
-        await asyncio.sleep(
-            0.1
-        )
+        await asyncio.sleep(0.1)
 
     return None
 
@@ -1842,50 +1433,25 @@ async def wait_active_modal(
 # OPEN PDF DROPDOWN
 # ============================================================
 
+
 async def open_pdf_dropdown(
     page,
     frame,
     modal,
 ):
-    dropdown = (
-        modal.locator(
-            "#mypdfDropdown"
-        )
-    )
+    dropdown = modal.locator("#mypdfDropdown")
 
-    if (
-        await dropdown.count()
-        == 0
-    ):
-        dropdown = (
-            frame.locator(
-                "#mypdfDropdown"
-            )
-        )
+    if await dropdown.count() == 0:
+        dropdown = frame.locator("#mypdfDropdown")
 
-    if (
-        await dropdown.count()
-        > 0
-    ):
-        radios = (
-            dropdown.first.locator(
-                'input[type="radio"]'
-            )
-        )
+    if await dropdown.count() > 0:
+        radios = dropdown.first.locator('input[type="radio"]')
 
-        if (
-            await radios.count()
-            > 0
-        ):
-            return (
-                dropdown.first
-            )
+        if await radios.count() > 0:
+            return dropdown.first
 
     selectors = [
-        (
-            ".rulespdfDownload "
-            ".dropdown-toggle"
-        ),
+        (".rulespdfDownload " ".dropdown-toggle"),
         ".rulespdfDownload button",
         ".rulespdfDownload a",
         ".rulespdfDownload",
@@ -1894,36 +1460,17 @@ async def open_pdf_dropdown(
     clicked = False
 
     for selector in selectors:
-        candidate = (
-            modal.locator(
-                selector
-            )
-        )
+        candidate = modal.locator(selector)
 
-        if (
-            await candidate.count()
-            == 0
-        ):
-            candidate = (
-                frame.locator(
-                    selector
-                )
-            )
+        if await candidate.count() == 0:
+            candidate = frame.locator(selector)
 
-        for index in range(
-            await candidate.count()
-        ):
-            item = (
-                candidate.nth(index)
-            )
+        for index in range(await candidate.count()):
+            item = candidate.nth(index)
 
             try:
-                if (
-                    await item.is_visible()
-                ):
-                    await item.click(
-                        force=True
-                    )
+                if await item.is_visible():
+                    await item.click(force=True)
 
                     clicked = True
 
@@ -1935,42 +1482,23 @@ async def open_pdf_dropdown(
         if clicked:
             break
 
-    await page.wait_for_timeout(
-        200
-    )
+    await page.wait_for_timeout(200)
 
-    dropdown = (
-        modal.locator(
-            "#mypdfDropdown"
-        )
-    )
+    dropdown = modal.locator("#mypdfDropdown")
 
-    if (
-        await dropdown.count()
-        == 0
-    ):
-        dropdown = (
-            frame.locator(
-                "#mypdfDropdown"
-            )
-        )
+    if await dropdown.count() == 0:
+        dropdown = frame.locator("#mypdfDropdown")
 
-    if (
-        await dropdown.count()
-        == 0
-    ):
-        raise RuntimeError(
-            "#mypdfDropdown not found."
-        )
+    if await dropdown.count() == 0:
+        raise RuntimeError("#mypdfDropdown not found.")
 
-    return (
-        dropdown.first
-    )
+    return dropdown.first
 
 
 # ============================================================
 # CURRENT RULE RADIO
 # ============================================================
+
 
 async def find_current_rule_radio(
     dropdown,
@@ -1986,38 +1514,17 @@ async def find_current_rule_radio(
     """
 
     selectors = [
-        (
-            'input[type="radio"]'
-            '[value="Current Rule"]'
-        ),
-        (
-            'input[type="radio"]'
-            '[aria-label="Current Rule"]'
-        ),
-        (
-            'input[type="radio"]'
-            '#rulesDownloadLinks'
-        ),
-        (
-            'input.rulesDownloadLinks'
-            '[type="radio"]'
-        ),
+        ('input[type="radio"]' '[value="Current Rule"]'),
+        ('input[type="radio"]' '[aria-label="Current Rule"]'),
+        ('input[type="radio"]' "#rulesDownloadLinks"),
+        ("input.rulesDownloadLinks" '[type="radio"]'),
     ]
 
     for selector in selectors:
-        locator = (
-            dropdown.locator(
-                selector
-            )
-        )
+        locator = dropdown.locator(selector)
 
-        if (
-            await locator.count()
-            > 0
-        ):
-            return (
-                locator.first
-            )
+        if await locator.count() > 0:
+            return locator.first
 
     return None
 
@@ -2026,28 +1533,21 @@ async def find_current_rule_radio(
 # DOWNLOAD EVENT
 # ============================================================
 
+
 async def wait_for_download_event(
     page,
     trigger,
     timeout_seconds,
 ):
-    loop = (
-        asyncio.get_running_loop()
-    )
+    loop = asyncio.get_running_loop()
 
-    future = (
-        loop.create_future()
-    )
+    future = loop.create_future()
 
     def on_download(
         download,
     ):
-        if (
-            not future.done()
-        ):
-            future.set_result(
-                download
-            )
+        if not future.done():
+            future.set_result(download)
 
     page.on(
         "download",
@@ -2058,11 +1558,9 @@ async def wait_for_download_event(
         await trigger()
 
         try:
-            return (
-                await asyncio.wait_for(
-                    future,
-                    timeout=timeout_seconds,
-                )
+            return await asyncio.wait_for(
+                future,
+                timeout=timeout_seconds,
             )
 
         except asyncio.TimeoutError:
@@ -2083,6 +1581,7 @@ async def wait_for_download_event(
 # CLICK HIDDEN CURRENT RULE RADIO
 # ============================================================
 
+
 async def trigger_current_rule(
     radio,
 ):
@@ -2095,8 +1594,7 @@ async def trigger_current_rule(
     DOM click correctly executes the site's handler.
     """
 
-    return await radio.evaluate(
-        """
+    return await radio.evaluate("""
         element => {
             if (element.disabled) {
                 return {
@@ -2123,13 +1621,13 @@ async def trigger_current_rule(
                     ) || ''
             };
         }
-        """
-    )
+        """)
 
 
 # ============================================================
 # CLOSE MODAL
 # ============================================================
+
 
 async def close_modal(
     page,
@@ -2143,30 +1641,16 @@ async def close_modal(
     ]
 
     for selector in selectors:
-        candidate = (
-            modal.locator(
-                selector
-            )
-        )
+        candidate = modal.locator(selector)
 
-        for index in range(
-            await candidate.count()
-        ):
-            item = (
-                candidate.nth(index)
-            )
+        for index in range(await candidate.count()):
+            item = candidate.nth(index)
 
             try:
-                if (
-                    await item.is_visible()
-                ):
-                    await item.click(
-                        force=True
-                    )
+                if await item.is_visible():
+                    await item.click(force=True)
 
-                    await page.wait_for_timeout(
-                        250
-                    )
+                    await page.wait_for_timeout(250)
 
                     return
 
@@ -2174,13 +1658,9 @@ async def close_modal(
                 pass
 
     try:
-        await page.keyboard.press(
-            "Escape"
-        )
+        await page.keyboard.press("Escape")
 
-        await page.wait_for_timeout(
-            250
-        )
+        await page.wait_for_timeout(250)
 
     except Exception:
         pass
@@ -2190,6 +1670,7 @@ async def close_modal(
 # DOWNLOAD ONE INDIVIDUAL RULE
 # ============================================================
 
+
 async def download_individual_rule(
     page,
     frame,
@@ -2198,91 +1679,60 @@ async def download_individual_rule(
     popup_index,
     manifest_rows,
 ):
-    popup_links = (
-        rule_popup_locator(
-            frame
-        )
-    )
+    """
+    Download one individual rule.
 
-    popup_count = (
-        await popup_links.count()
-    )
+    Retry policy:
+      - Try Current Rule up to DOWNLOAD_RETRY_ATTEMPTS times.
+      - Each retry re-opens the individual-rule modal and PDF dropdown.
+      - Do not write an ERROR manifest row for intermediate failures.
+      - On success, write one downloaded row.
+      - After all attempts fail, write one ERROR row and move on.
+    """
 
-    if (
-        popup_index
-        >= popup_count
-    ):
-        raise RuntimeError(
-            "rulePopup disappeared."
-        )
+    popup_links = rule_popup_locator(frame)
 
-    popup_link = (
-        popup_links.nth(
-            popup_index
-        )
-    )
+    popup_count = await popup_links.count()
 
-    rule_title = clean_text(
-        await popup_link.inner_text()
-    )
+    if popup_index >= popup_count:
+        raise RuntimeError("rulePopup disappeared.")
 
-    rules_name = clean_text(
-        table_metadata[
-            "rules"
-        ]
-    )
+    popup_link = popup_links.nth(popup_index)
 
-    rule_contains = clean_text(
-        table_metadata[
-            "rule_contains"
-        ]
-    )
+    rule_title = clean_text(await popup_link.inner_text())
 
-    notification_date = clean_text(
-        table_metadata[
-            "notification_date"
-        ]
-    )
+    rules_name = clean_text(table_metadata["rules"])
+
+    rule_contains = clean_text(table_metadata["rule_contains"])
+
+    notification_date = clean_text(table_metadata["notification_date"])
 
     # ========================================================
     # BUILD DESTINATION BEFORE DOWNLOADING
     # ========================================================
 
-    filename = (
-        build_filename(
-            rules_name,
-            rule_contains,
-            notification_date,
-            rule_title,
-        )
+    filename = build_filename(
+        rules_name,
+        rule_contains,
+        notification_date,
+        rule_title,
     )
 
-    destination = (
-        DOWNLOAD_DIR
-        / filename
-    )
+    destination = DOWNLOAD_DIR / filename
 
     print()
     print("-" * 78)
 
-    print(
-        f"RULE POPUP "
-        f"{popup_index + 1}/"
-        f"{popup_count}"
-    )
+    print(f"RULE POPUP " f"{popup_index + 1}/" f"{popup_count}")
 
     print("-" * 78)
 
     print(
         "Individual Rule:",
-        repr(
-            rule_title
-        ),
+        repr(rule_title),
     )
 
-    print(
-        "Target filename:"
-    )
+    print("Target filename:")
 
     print(
         " ",
@@ -2293,338 +1743,295 @@ async def download_individual_rule(
     # DUPLICATE CHECK BEFORE OPENING MODAL/DOWNLOAD
     # ========================================================
 
-    if (
-        destination.exists()
-    ):
-        print(
-            "  ALREADY EXISTS - SKIPPING DOWNLOAD"
-        )
+    if destination.exists():
+        print("  ALREADY EXISTS - SKIPPING DOWNLOAD")
 
         manifest_rows.append(
             {
-                "table_row":
-                    table_row_number,
-
-                "rules":
-                    rules_name,
-
-                "rule_contains":
-                    rule_contains,
-
-                "notification_date":
-                    notification_date,
-
-                "rule_title":
-                    rule_title,
-
-                "original_pdf":
-                    "",
-
-                "saved_filename":
-                    filename,
-
-                "status":
-                    "already-exists",
+                "table_row": table_row_number,
+                "rules": rules_name,
+                "rule_contains": rule_contains,
+                "notification_date": notification_date,
+                "rule_title": rule_title,
+                "original_pdf": "",
+                "saved_filename": filename,
+                "status": "already-exists",
             }
         )
 
-        save_manifest(
-            manifest_rows
-        )
+        save_manifest(manifest_rows)
 
         return
 
     # ========================================================
-    # OPEN INDIVIDUAL RULE MODAL
+    # RETRY LOOP
     # ========================================================
 
-    try:
-        await popup_link.scroll_into_view_if_needed()
+    last_error = None
 
-    except Exception:
-        pass
-
-    try:
-        await popup_link.click(
-            timeout=15000,
-        )
-
-    except Exception:
-        await popup_link.click(
-            force=True,
-        )
-
-    modal = (
-        await wait_active_modal(
-            frame
-        )
-    )
-
-    if (
-        modal is None
+    for attempt in range(
+        1,
+        DOWNLOAD_RETRY_ATTEMPTS + 1,
     ):
-        raise RuntimeError(
-            "Rule modal did not open."
-        )
+        print()
+        print(f"  DOWNLOAD ATTEMPT " f"{attempt}/" f"{DOWNLOAD_RETRY_ATTEMPTS}")
 
-    print(
-        "  Modal opened."
-    )
-
-    dropdown = (
-        await open_pdf_dropdown(
-            page,
-            frame,
-            modal,
-        )
-    )
-
-    radios = (
-        dropdown.locator(
-            'input[type="radio"]'
-        )
-    )
-
-    print(
-        "  Total PDF options:",
-        await radios.count(),
-    )
-
-    # Print options for diagnostics.
-    for index in range(
-        await radios.count()
-    ):
-        radio = (
-            radios.nth(index)
-        )
+        modal = None
 
         try:
-            value = (
-                await radio.get_attribute(
-                    "value"
+            # ------------------------------------------------
+            # Re-acquire popup link on every attempt because
+            # MCA can rebuild the list after a modal closes.
+            # ------------------------------------------------
+
+            popup_links = rule_popup_locator(frame)
+
+            popup_count_now = await popup_links.count()
+
+            if popup_index >= popup_count_now:
+                raise RuntimeError("rulePopup disappeared " "before retry.")
+
+            popup_link = popup_links.nth(popup_index)
+
+            # =================================================
+            # OPEN INDIVIDUAL RULE MODAL
+            # =================================================
+
+            try:
+                await popup_link.scroll_into_view_if_needed()
+
+            except Exception:
+                pass
+
+            try:
+                await popup_link.click(
+                    timeout=15000,
                 )
-            )
 
-        except Exception:
-            value = None
-
-        try:
-            aria_label = (
-                await radio.get_attribute(
-                    "aria-label"
+            except Exception:
+                await popup_link.click(
+                    force=True,
                 )
+
+            modal = await wait_active_modal(frame)
+
+            if modal is None:
+                raise RuntimeError("Rule modal did not open.")
+
+            print("  Modal opened.")
+
+            dropdown = await open_pdf_dropdown(
+                page,
+                frame,
+                modal,
             )
 
-        except Exception:
-            aria_label = None
+            radios = dropdown.locator('input[type="radio"]')
 
-        print(
-            f"    [{index + 1}] "
-            f"value={value!r} "
-            f"aria-label={aria_label!r}"
-        )
-
-    current_rule_radio = (
-        await find_current_rule_radio(
-            dropdown
-        )
-    )
-
-    if (
-        current_rule_radio
-        is None
-    ):
-        raise RuntimeError(
-            "Current Rule radio "
-            "was not found."
-        )
-
-    # ========================================================
-    # DOWNLOAD CURRENT RULE
-    # ========================================================
-
-    async def trigger():
-        result = (
-            await trigger_current_rule(
-                current_rule_radio
+            print(
+                "  Total PDF options:",
+                await radios.count(),
             )
-        )
 
-        print(
-            "  Current Rule trigger:",
-            result,
-        )
+            # Print options on first attempt only to avoid
+            # repeating large diagnostics on every retry.
+            if attempt == 1:
+                for index in range(await radios.count()):
+                    radio = radios.nth(index)
 
-    print(
-        "  Downloading Current Rule..."
-    )
+                    try:
+                        value = await radio.get_attribute("value")
 
-    download = (
-        await wait_for_download_event(
-            page,
-            trigger,
-            DOWNLOAD_WAIT_SECONDS,
-        )
-    )
+                    except Exception:
+                        value = None
 
-    if (
-        download is None
-    ):
-        print(
-            "  ERROR: Current Rule "
-            "did not trigger a download."
-        )
+                    try:
+                        aria_label = await radio.get_attribute("aria-label")
 
-        manifest_rows.append(
-            {
-                "table_row":
-                    table_row_number,
+                    except Exception:
+                        aria_label = None
 
-                "rules":
-                    rules_name,
+                    print(f"    [{index + 1}] " f"value={value!r} " f"aria-label={aria_label!r}")
 
-                "rule_contains":
-                    rule_contains,
+            current_rule_radio = await find_current_rule_radio(dropdown)
 
-                "notification_date":
-                    notification_date,
+            if current_rule_radio is None:
+                raise RuntimeError("Current Rule radio " "was not found.")
 
-                "rule_title":
-                    rule_title,
+            # =================================================
+            # DOWNLOAD CURRENT RULE
+            # =================================================
 
-                "original_pdf":
-                    "",
+            async def trigger():
+                result = await trigger_current_rule(current_rule_radio)
 
-                "saved_filename":
-                    filename,
+                print(
+                    "  Current Rule trigger:",
+                    result,
+                )
 
-                "status":
+            print("  Downloading Current Rule...")
+
+            download = await wait_for_download_event(
+                page,
+                trigger,
+                DOWNLOAD_WAIT_SECONDS,
+            )
+
+            if download is None:
+                raise RuntimeError("Current Rule download timeout")
+
+            original_pdf = clean_text(download.suggested_filename or "")
+
+            print(
+                "  MCA original filename:",
+                repr(original_pdf),
+            )
+
+            # =================================================
+            # SAVE USING OUR LOGICAL FILENAME
+            # =================================================
+
+            await download.save_as(str(destination))
+
+            print("  SAVED:")
+
+            print(
+                " ",
+                destination.name,
+            )
+
+            print(f"  SUCCESS ON ATTEMPT " f"{attempt}/" f"{DOWNLOAD_RETRY_ATTEMPTS}")
+
+            manifest_rows.append(
+                {
+                    "table_row": table_row_number,
+                    "rules": rules_name,
+                    "rule_contains": rule_contains,
+                    "notification_date": notification_date,
+                    "rule_title": rule_title,
+                    "original_pdf": original_pdf,
+                    "saved_filename": destination.name,
+                    "status": "downloaded",
+                }
+            )
+
+            save_manifest(manifest_rows)
+
+            await close_modal(
+                page,
+                modal,
+            )
+
+            await page.wait_for_timeout(250)
+
+            return
+
+        except Exception as exc:
+            last_error = exc
+
+            print(
+                f"  ATTEMPT " f"{attempt}/" f"{DOWNLOAD_RETRY_ATTEMPTS} " f"FAILED:",
+                repr(exc),
+            )
+
+            # Save attempt-specific diagnostics.
+            try:
+                await save_debug(
+                    page,
                     (
-                        "ERROR: "
-                        "Current Rule download timeout"
+                        f"row_"
+                        f"{table_row_number}_"
+                        f"rule_"
+                        f"{popup_index + 1}_"
+                        f"attempt_"
+                        f"{attempt}"
                     ),
-            }
-        )
+                )
 
-        save_manifest(
-            manifest_rows
-        )
+            except Exception:
+                pass
 
-        await close_modal(
-            page,
-            modal,
-        )
+            # Close any modal that remains open so the next
+            # retry begins from a clean state.
+            try:
+                if modal is None:
+                    modal = await get_active_modal(frame)
 
-        return
+                if modal is not None:
+                    await close_modal(
+                        page,
+                        modal,
+                    )
 
-    original_pdf = clean_text(
-        download.suggested_filename
-        or ""
-    )
+            except Exception:
+                pass
 
-    print(
-        "  MCA original filename:",
-        repr(
-            original_pdf
-        ),
-    )
+            # Give MCA a moment to reset before retrying.
+            if attempt < DOWNLOAD_RETRY_ATTEMPTS:
+                print(f"  Retrying in " f"{DOWNLOAD_RETRY_DELAY_SECONDS}s...")
+
+                await asyncio.sleep(DOWNLOAD_RETRY_DELAY_SECONDS)
 
     # ========================================================
-    # SAVE USING OUR LOGICAL FILENAME
+    # ALL ATTEMPTS FAILED
     # ========================================================
 
-    await download.save_as(
-        str(
-            destination
-        )
-    )
+    error_text = clean_text(str(last_error or "Unknown download failure"))
 
-    print(
-        "  SAVED:"
-    )
+    print()
+    print("  ERROR: all " f"{DOWNLOAD_RETRY_ATTEMPTS} " "download attempts failed.")
 
-    print(
-        " ",
-        destination.name,
-    )
+    print("  Moving on to the next item.")
 
     manifest_rows.append(
         {
-            "table_row":
-                table_row_number,
-
-            "rules":
-                rules_name,
-
-            "rule_contains":
-                rule_contains,
-
-            "notification_date":
-                notification_date,
-
-            "rule_title":
-                rule_title,
-
-            "original_pdf":
-                original_pdf,
-
-            "saved_filename":
-                destination.name,
-
-            "status":
-                "downloaded",
+            "table_row": table_row_number,
+            "rules": rules_name,
+            "rule_contains": rule_contains,
+            "notification_date": notification_date,
+            "rule_title": rule_title,
+            "original_pdf": "",
+            "saved_filename": filename,
+            "status": ("ERROR after " f"{DOWNLOAD_RETRY_ATTEMPTS} attempts: " f"{error_text}"),
         }
     )
 
-    save_manifest(
-        manifest_rows
-    )
+    # Persist failure immediately. If the scraper later exits,
+    # downloads.csv still records this item as failed.
+    save_manifest(manifest_rows)
 
-    await close_modal(
-        page,
-        modal,
-    )
+    await page.wait_for_timeout(250)
 
-    await page.wait_for_timeout(
-        250
-    )
+    # Deliberately return rather than raise:
+    # process_all_rules() will continue with the next item.
+    return
 
 
 # ============================================================
 # PROCESS ALL RULES
 # ============================================================
 
+
 async def process_all_rules(
     page,
     frame,
 ):
-    manifest_rows = (
-        load_manifest()
-    )
+    manifest_rows = load_manifest()
 
-    if (
-        manifest_rows
-    ):
+    if manifest_rows:
         print(
             "Loaded existing manifest entries:",
-            len(
-                manifest_rows
-            ),
+            len(manifest_rows),
         )
 
-    rows = (
-        frame.locator(
-            "#rulesContainer tbody tr"
-        )
-    )
+    rows = frame.locator("#rulesContainer tbody tr")
 
-    total_rows = (
-        await rows.count()
-    )
+    total_rows = await rows.count()
 
     print()
     print("=" * 78)
-    print("RULE DOWNLOAD")
+    print("RULE DOWNLOAD - DATE-SORTED FILENAMES")
     print("=" * 78)
 
     print(
@@ -2641,74 +2048,45 @@ async def process_all_rules(
 
     total_popups = 0
 
-    for row_index in range(
-        total_rows
-    ):
+    for row_index in range(total_rows):
         try:
             (
                 metadata,
                 popup_count,
-            ) = (
-                await open_rule_table_row(
-                    frame,
-                    row_index,
-                )
+            ) = await open_rule_table_row(
+                frame,
+                row_index,
             )
 
-            total_popups += (
-                popup_count
-            )
+            total_popups += popup_count
 
-            for popup_index in range(
-                popup_count
-            ):
+            for popup_index in range(popup_count):
                 try:
                     await download_individual_rule(
                         page=page,
                         frame=frame,
-                        table_row_number=(
-                            row_index + 1
-                        ),
-                        table_metadata=(
-                            metadata
-                        ),
-                        popup_index=(
-                            popup_index
-                        ),
-                        manifest_rows=(
-                            manifest_rows
-                        ),
+                        table_row_number=(row_index + 1),
+                        table_metadata=(metadata),
+                        popup_index=(popup_index),
+                        manifest_rows=(manifest_rows),
                     )
 
                 except Exception as exc:
                     print()
                     print(
-                        "  ERROR processing "
-                        "individual rule:",
+                        "  ERROR processing " "individual rule:",
                         repr(exc),
                     )
 
                     await save_debug(
                         page,
-                        (
-                            f"row_"
-                            f"{row_index + 1}_"
-                            f"rule_"
-                            f"{popup_index + 1}"
-                        ),
+                        (f"row_" f"{row_index + 1}_" f"rule_" f"{popup_index + 1}"),
                     )
 
                     try:
-                        modal = (
-                            await get_active_modal(
-                                frame
-                            )
-                        )
+                        modal = await get_active_modal(frame)
 
-                        if (
-                            modal
-                            is not None
-                        ):
+                        if modal is not None:
                             await close_modal(
                                 page,
                                 modal,
@@ -2717,65 +2095,27 @@ async def process_all_rules(
                     except Exception:
                         pass
 
-            await page.wait_for_timeout(
-                300
-            )
+            await page.wait_for_timeout(300)
 
         except Exception as exc:
             print()
             print(
-                "ERROR processing "
-                f"table row "
-                f"{row_index + 1}:",
+                "ERROR processing " f"table row " f"{row_index + 1}:",
                 repr(exc),
             )
 
             await save_debug(
                 page,
-                (
-                    f"table_row_"
-                    f"{row_index + 1}_error"
-                ),
+                (f"table_row_" f"{row_index + 1}_error"),
             )
 
-    save_manifest(
-        manifest_rows
-    )
+    save_manifest(manifest_rows)
 
-    downloaded = sum(
-        1
-        for row in manifest_rows
-        if (
-            row.get(
-                "status"
-            )
-            == "downloaded"
-        )
-    )
+    downloaded = sum(1 for row in manifest_rows if (row.get("status") == "downloaded"))
 
-    already_exists = sum(
-        1
-        for row in manifest_rows
-        if (
-            row.get(
-                "status"
-            )
-            == "already-exists"
-        )
-    )
+    already_exists = sum(1 for row in manifest_rows if (row.get("status") == "already-exists"))
 
-    errors = sum(
-        1
-        for row in manifest_rows
-        if (
-            row.get(
-                "status",
-                ""
-            ).startswith(
-                "ERROR"
-            )
-        )
-    )
+    errors = sum(1 for row in manifest_rows if (row.get("status", "").startswith("ERROR")))
 
     print()
     print("=" * 78)
@@ -2824,15 +2164,14 @@ async def process_all_rules(
 # KEEP PROCESS ALIVE
 # ============================================================
 
+
 async def keep_browser_open():
     print()
     print("=" * 78)
     print("PROCESS WILL REMAIN RUNNING")
     print("=" * 78)
 
-    print(
-        "Press Ctrl+C to exit."
-    )
+    print("Press Ctrl+C to exit.")
 
     await asyncio.Event().wait()
 
@@ -2840,6 +2179,7 @@ async def keep_browser_open():
 # ============================================================
 # MAIN
 # ============================================================
+
 
 async def main():
     async with async_playwright() as p:
@@ -2851,30 +2191,22 @@ async def main():
         # on this server.
         # ====================================================
 
-        browser = (
-            await p.firefox.launch(
-                headless=True,
-            )
+        browser = await p.firefox.launch(
+            headless=True,
         )
 
-        context = (
-            await browser.new_context(
-                accept_downloads=True,
-                viewport={
-                    "width": 1920,
-                    "height": 1080,
-                },
-                locale="en-US",
-            )
+        context = await browser.new_context(
+            accept_downloads=True,
+            viewport={
+                "width": 1920,
+                "height": 1080,
+            },
+            locale="en-US",
         )
 
-        page = (
-            await context.new_page()
-        )
+        page = await context.new_page()
 
-        page.set_default_timeout(
-            DEFAULT_TIMEOUT
-        )
+        page.set_default_timeout(DEFAULT_TIMEOUT)
 
         # ----------------------------------------------------
         # DOCUMENT RESPONSE LOGGING
@@ -2884,13 +2216,7 @@ async def main():
             response,
         ):
             try:
-                if (
-                    "mca.gov.in"
-                    in response.url
-                    and
-                    response.request.resource_type
-                    == "document"
-                ):
+                if "mca.gov.in" in response.url and response.request.resource_type == "document":
                     print(
                         "[DOCUMENT]",
                         response.status,
@@ -2911,35 +2237,25 @@ async def main():
             # 1. HOME
             # =================================================
 
-            await open_home(
-                page
-            )
+            await open_home(page)
 
             # =================================================
             # 2. RULES MODULE
             # =================================================
 
-            await open_rules_module(
-                page
-            )
+            await open_rules_module(page)
 
             # =================================================
             # 3. COMPANIES ACT + GO
             # =================================================
 
-            rules_context = (
-                await select_companies_act_and_click_go(
-                    page
-                )
-            )
+            rules_context = await select_companies_act_and_click_go(page)
 
             # =================================================
             # 4. SELECT ALL 54 ROWS
             # =================================================
 
-            await select_all_rules(
-                rules_context
-            )
+            await select_all_rules(rules_context)
 
             # =================================================
             # 5. DOWNLOAD CURRENT RULE FOR EACH INDIVIDUAL RULE
@@ -2989,12 +2305,8 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        asyncio.run(
-            main()
-        )
+        asyncio.run(main())
 
     except KeyboardInterrupt:
         print()
-        print(
-            "Script stopped."
-        )
+        print("Script stopped.")
