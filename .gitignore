@@ -86,3 +86,6 @@ logs/
 scripts/egazette_debug/*
 scripts/egazette_mca_pdfs/*
 scripts/mca_companies_act_2013/*
+scripts/mca_companies_act_2013_text/*
+scripts/mca_browser_test/*
+*.zip
