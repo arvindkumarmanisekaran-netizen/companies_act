@@ -48,6 +48,30 @@ frontend/coverage/
 !.env.example
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
+
+# Private legal corpus and generated legal data
+private-data/
+private_data/
+legal-data-private/
+data/private/
+data/raw/
+data/processed/
+docs/legal-data/generated/
+backend/private-data/
+backend/private_data/
+
+# Database dumps / backups
+*.dump
+*.backup
+*.sql.gz
+*.sql.bz2
+*.sql.xz
+backups/
+db-backups/
+database-backups/
 
 # Generated parser output
 docs/sections_master.json
@@ -83,9 +107,16 @@ tempCodeRunnerFile.py
 *.log
 logs/
 
+# Existing private scraper/download/conversion outputs
 scripts/egazette_debug/*
 scripts/egazette_mca_pdfs/*
 scripts/mca_companies_act_2013/*
 scripts/mca_companies_act_2013_text/*
 scripts/mca_browser_test/*
+
+# Archives must never be used to publish private corpus data
 *.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
