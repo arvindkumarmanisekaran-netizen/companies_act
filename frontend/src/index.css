@@ -19,6 +19,29 @@ select {
   font: inherit;
 }
 
+/*
+ * On mobile the Act viewer used a viewport-height wrapper plus a nested
+ * overflow-y scroll container. Once the timeline controls were added above
+ * it, that fixed height no longer represented the available viewport and the
+ * section reader could become effectively non-scrollable/clipped. Let the
+ * document own vertical scrolling on small screens; the navigation drawer
+ * keeps its own independent scroll areas.
+ */
+@media (max-width: 767px) {
+  [class*="h-[calc(100dvh-3.5rem)]"] {
+    height: auto !important;
+    min-height: calc(100dvh - 3.5rem) !important;
+    overflow: visible !important;
+  }
+
+  [class*="h-[calc(100dvh-3.5rem)]"] > main {
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+    overscroll-behavior-y: auto !important;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
