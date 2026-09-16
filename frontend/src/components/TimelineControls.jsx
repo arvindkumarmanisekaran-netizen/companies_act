@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
+  BookOpen,
   CalendarDays,
   ChevronDown,
   ChevronUp,
@@ -9,6 +10,7 @@ import {
   History,
   RotateCcw,
   ShieldCheck,
+  X,
 } from "lucide-react";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -80,11 +82,8 @@ const SourceRow = ({ source }) => (
         </span>
         {Number(source.change_relationship_count || 0) > 0 && (
           <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
-            {source.change_relationship_count} change link{Number(source.change_relationship_count) === 1 ? "" : "s"}
+            Linked to Act changes
           </span>
-        )}
-        {Number(source.relationship_count || 0) > 0 && (
-          <span className="text-[10px] font-semibold text-slate-400">{source.relationship_count} relationships</span>
         )}
       </div>
       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{source.title}</p>
@@ -100,12 +99,11 @@ const TimelineControls = ({
   events = [],
   sources = [],
   sourceSummary = [],
-  sourceTotal = 0,
   eventsLoading = false,
   timelineSummary,
 }) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("changes");
+  const [corpusOpen, setCorpusOpen] = useState(false);
   const [instrumentFilter, setInstrumentFilter] = useState("all");
 
   const min = ACT_ENACTMENT_DATE;
@@ -134,13 +132,6 @@ const TimelineControls = ({
     [sources, instrumentFilter],
   );
 
-  const totalDocuments = Number(meta?.total_documents || 0) || sourceSummary.reduce(
-    (sum, item) => sum + Number(item.total || 0),
-    0,
-  );
-  const undatedDocuments = sourceSummary.reduce((sum, item) => sum + Number(item.undated || 0), 0);
-  const datedDocuments = sourceSummary.reduce((sum, item) => sum + Number(item.dated || 0), 0);
-
   const eventDates = useMemo(() => {
     const unique = [];
     const seen = new Set();
@@ -159,7 +150,10 @@ const TimelineControls = ({
     timelineSummary?.unresolved_historical_changes ?? meta?.unresolved_historical_changes ?? 0,
   );
 
-  const familyText = (meta?.corpus_families || []).join(" · ");
+  const documentTypeLabels = useMemo(
+    () => sourceSummary.map((item) => item.instrument_label).filter(Boolean),
+    [sourceSummary],
+  );
 
   return (
     <section className="border-b border-slate-200 bg-white" aria-label="Historical Act timeline">
@@ -241,19 +235,20 @@ const TimelineControls = ({
             )}
           </div>
 
-          <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-4 grid gap-2 border-t border-slate-200 pt-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs text-slate-600">
               <History size={15} className="text-slate-400" />
               <span><strong className="text-slate-900">{changeEvents.length}</strong> resolved legal changes loaded</span>
             </div>
-            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs text-slate-600">
-              <FileText size={15} className="text-slate-400" />
-              <span><strong className="text-slate-900">{sourceTotal.toLocaleString("en-IN")}</strong> dated sources by this date</span>
-            </div>
-            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs text-slate-600">
-              <FileText size={15} className="text-slate-400" />
-              <span><strong className="text-slate-900">{totalDocuments.toLocaleString("en-IN")}</strong> documents in corpus</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => setCorpusOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs font-bold text-blue-950 transition hover:border-blue-300 hover:bg-blue-100"
+            >
+              <BookOpen size={15} className="text-blue-800" />
+              <span>Corpus</span>
+              <span className="ml-auto text-[10px] font-semibold text-blue-700">Open</span>
+            </button>
             <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs text-slate-600">
               <ShieldCheck size={15} className="text-emerald-700" />
               <span><strong className="text-slate-900">{exactVersions.toLocaleString("en-IN")}</strong> exact versioned provisions</span>
@@ -270,7 +265,7 @@ const TimelineControls = ({
               onClick={() => setDetailsOpen((value) => !value)}
               className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2.5 text-xs font-bold text-blue-900 hover:bg-blue-50"
             >
-              {detailsOpen ? "Hide changes & sources" : "Show changes & sources"}
+              {detailsOpen ? "Hide legal changes" : "Show legal changes"}
               {detailsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
           </div>
@@ -280,94 +275,129 @@ const TimelineControls = ({
           <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
             <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900">Changes and complete parsed source corpus</h3>
+                <h3 className="text-sm font-extrabold text-slate-900">Legal changes effective by {formatDate(selectedDate)}</h3>
                 <p className="mt-1 max-w-4xl text-xs text-slate-500">
-                  “Legal changes” uses resolved legal-effect dates. “Parsed sources” shows documents published or enacted by {formatDate(selectedDate)}; publication alone never changes the historical wording.
+                  These entries use resolved legal-effect dates and track amendments, substitutions, insertions, omissions, commencements and other confirmed changes affecting the Act by the selected date.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={instrumentFilter}
-                  onChange={(event) => setInstrumentFilter(event.target.value)}
-                  className="min-h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700"
-                  aria-label="Filter by document type"
-                >
-                  <option value="all">All document types</option>
-                  {sourceSummary.map((item) => (
-                    <option key={item.instrument_type} value={item.instrument_type}>
-                      {item.instrument_label} ({Number(item.total || 0).toLocaleString("en-IN")})
-                    </option>
-                  ))}
-                </select>
-                <div className="inline-flex w-fit rounded-lg bg-slate-100 p-1 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("changes")}
-                    className={`rounded-md px-3 py-1.5 ${activeTab === "changes" ? "bg-white text-blue-950 shadow-sm" : "text-slate-500"}`}
-                  >
-                    Legal changes ({changeEvents.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("sources")}
-                    className={`rounded-md px-3 py-1.5 ${activeTab === "sources" ? "bg-white text-blue-950 shadow-sm" : "text-slate-500"}`}
-                  >
-                    Parsed sources ({sourceTotal.toLocaleString("en-IN")})
-                  </button>
-                </div>
-              </div>
+              <select
+                value={instrumentFilter}
+                onChange={(event) => setInstrumentFilter(event.target.value)}
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700"
+                aria-label="Filter changes by document type"
+              >
+                <option value="all">All document types</option>
+                {sourceSummary.map((item) => (
+                  <option key={item.instrument_type} value={item.instrument_type}>
+                    {item.instrument_label}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="mt-3 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-              <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-                {activeTab === "changes" && filteredChanges.slice(0, 120).map((event) => (
-                  <ChangeRow key={`${event.relationship_id}-${event.event_date}`} event={event} />
-                ))}
-                {activeTab === "sources" && filteredSources.slice(0, 160).map((source) => (
-                  <SourceRow key={source.document_id} source={source} />
-                ))}
-                {!eventsLoading && activeTab === "changes" && !filteredChanges.length && (
-                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-xs text-slate-500">
-                    No resolved legal-effect changes match this filter by the selected date.
-                  </div>
-                )}
-                {!eventsLoading && activeTab === "sources" && !filteredSources.length && (
-                  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-xs text-slate-500">
-                    No dated parsed sources match this filter by the selected date.
-                  </div>
-                )}
-                {eventsLoading && <div className="py-6 text-center text-xs text-slate-400">Updating historical database view…</div>}
-              </div>
-
-              <aside className="rounded-xl bg-slate-50 p-3">
-                <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Parsed document types</h4>
-                <div className="mt-2 max-h-72 divide-y divide-slate-200 overflow-y-auto pr-1">
-                  {sourceSummary.map((item) => (
-                    <div key={item.instrument_type} className="py-1.5 text-xs">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-semibold text-slate-700">{item.instrument_label}</span>
-                        <span className="font-bold tabular-nums text-slate-500">{Number(item.total || 0).toLocaleString("en-IN")}</span>
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-slate-400">
-                        {Number(item.dated || 0).toLocaleString("en-IN")} dated · {Number(item.undated || 0).toLocaleString("en-IN")} undated
-                      </div>
-                    </div>
-                  ))}
+            <div className="mt-3 max-h-[30rem] space-y-2 overflow-y-auto pr-1">
+              {filteredChanges.slice(0, 160).map((event) => (
+                <ChangeRow key={`${event.relationship_id}-${event.event_date}`} event={event} />
+              ))}
+              {!eventsLoading && !filteredChanges.length && (
+                <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-xs text-slate-500">
+                  No resolved legal-effect changes match this filter by the selected date.
                 </div>
-                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-2.5 text-[11px] leading-relaxed text-slate-600">
-                  <strong>{datedDocuments.toLocaleString("en-IN")}</strong> documents have a usable corpus date; <strong>{undatedDocuments.toLocaleString("en-IN")}</strong> remain undated and are kept in the database but are not placed on the slider chronology.
-                </div>
-                {!!familyText && (
-                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">{familyText}</p>
-                )}
-                <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-                  The database includes the Companies Act structure, Amendment Acts/Ordinances where present, Rules and Amendment Rules, Notifications and Commencement Notifications, Circulars, Corrigenda, Orders, Removal of Difficulties Orders, Forms, Accounting Standards/Ind AS and Regulations.
-                </p>
-              </aside>
+              )}
+              {eventsLoading && <div className="py-6 text-center text-xs text-slate-400">Updating historical database view…</div>}
             </div>
           </div>
         )}
       </div>
+
+      {corpusOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="corpus-dialog-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCorpusOpen(false);
+          }}
+        >
+          <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FileText size={18} className="text-blue-900" />
+                  <h3 id="corpus-dialog-title" className="text-base font-extrabold text-slate-950">Parsed legal corpus</h3>
+                </div>
+                <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-500">
+                  Source material available to the historical reconstruction as at {formatDate(selectedDate)}. Publication or appearance in the corpus does not by itself alter the Act; legal-effect relationships determine historical wording.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCorpusOpen(false)}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close corpus"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid min-h-0 flex-1 gap-4 overflow-hidden p-4 sm:p-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <aside className="overflow-y-auto rounded-xl bg-slate-50 p-3">
+                <h4 className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">Document types</h4>
+                <div className="mt-2 space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setInstrumentFilter("all")}
+                    className={`w-full rounded-lg px-2.5 py-2 text-left text-xs font-semibold ${instrumentFilter === "all" ? "bg-blue-950 text-white" : "text-slate-700 hover:bg-white"}`}
+                  >
+                    All document types
+                  </button>
+                  {sourceSummary.map((item) => (
+                    <button
+                      key={item.instrument_type}
+                      type="button"
+                      onClick={() => setInstrumentFilter(item.instrument_type)}
+                      className={`w-full rounded-lg px-2.5 py-2 text-left text-xs font-semibold ${instrumentFilter === item.instrument_type ? "bg-blue-950 text-white" : "text-slate-700 hover:bg-white"}`}
+                    >
+                      {item.instrument_label}
+                    </button>
+                  ))}
+                </div>
+                {!sourceSummary.length && documentTypeLabels.length === 0 && (
+                  <p className="mt-3 text-xs text-slate-500">Document types will appear when corpus metadata is available.</p>
+                )}
+                <div className="mt-4 border-t border-slate-200 pt-3 text-[11px] leading-relaxed text-slate-500">
+                  The corpus includes the Companies Act structure, Amendment Acts and Ordinances where present, Rules and Amendment Rules, Notifications and Commencement Notifications, Circulars, Corrigenda, Orders, Removal of Difficulties Orders, Forms, Accounting Standards and Ind AS, and Regulations.
+                </div>
+              </aside>
+
+              <div className="min-h-0 overflow-y-auto pr-1">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      {instrumentFilter === "all"
+                        ? "Corpus sources"
+                        : sourceSummary.find((item) => item.instrument_type === instrumentFilter)?.instrument_label || relationshipLabel(instrumentFilter)}
+                    </h4>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Showing dated source material available by the selected historical date.</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {filteredSources.slice(0, 240).map((source) => (
+                    <SourceRow key={source.document_id} source={source} />
+                  ))}
+                  {!eventsLoading && !filteredSources.length && (
+                    <div className="rounded-xl border border-dashed border-slate-200 px-4 py-10 text-center text-xs text-slate-500">
+                      No dated parsed sources match this document type by the selected date.
+                    </div>
+                  )}
+                  {eventsLoading && <div className="py-8 text-center text-xs text-slate-400">Updating corpus for selected date…</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
