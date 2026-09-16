@@ -66,6 +66,8 @@ const ActViewer = ({ data }) => {
   const [selectedSectionKey, setSelectedSectionKey] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [viewerHeight, setViewerHeight] = useState(null);
+  const viewerRef = useRef(null);
   const contentRef = useRef(null);
   const rawChapters = data?.chapters || [];
 
@@ -125,6 +127,39 @@ const ActViewer = ({ data }) => {
   }, [sectionEntries, selectedSectionKey]);
 
   useEffect(() => {
+    const updateViewerHeight = () => {
+      const node = viewerRef.current;
+      if (!node) return;
+
+      const top = Math.max(0, node.getBoundingClientRect().top);
+      const nextHeight = Math.max(320, Math.floor(window.innerHeight - top));
+      setViewerHeight((current) =>
+        current !== null && Math.abs(current - nextHeight) < 2
+          ? current
+          : nextHeight,
+      );
+    };
+
+    updateViewerHeight();
+    const frame = window.requestAnimationFrame(updateViewerHeight);
+    window.addEventListener("resize", updateViewerHeight);
+    window.addEventListener("scroll", updateViewerHeight, { passive: true });
+
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateViewerHeight);
+    if (observer) observer.observe(document.body);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updateViewerHeight);
+      window.removeEventListener("scroll", updateViewerHeight);
+      observer?.disconnect();
+    };
+  }, [data]);
+
+  useEffect(() => {
     if (!mobileNavOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -174,7 +209,11 @@ const ActViewer = ({ data }) => {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] overflow-hidden bg-slate-50 md:h-auto md:min-h-[calc(100vh-4rem)] md:overflow-visible">
+    <div
+      ref={viewerRef}
+      className="flex min-h-0 overflow-hidden bg-slate-50"
+      style={viewerHeight ? { height: `${viewerHeight}px` } : undefined}
+    >
       {mobileNavOpen && (
         <button
           type="button"
@@ -186,7 +225,7 @@ const ActViewer = ({ data }) => {
 
       <aside
         aria-label="Act navigation"
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[88vw] max-w-sm shrink-0 transform flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-200 md:sticky md:top-16 md:z-20 md:h-[calc(100vh-4rem)] md:w-80 md:translate-x-0 md:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[88vw] max-w-sm shrink-0 transform flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-200 md:relative md:inset-auto md:z-20 md:h-full md:w-80 md:translate-x-0 md:shadow-none ${
           mobileNavOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -287,7 +326,7 @@ const ActViewer = ({ data }) => {
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+          <div className="min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain pb-[calc(1rem+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
             {sectionEntries.map((entry, index) => (
               <button
                 type="button"
@@ -318,7 +357,7 @@ const ActViewer = ({ data }) => {
 
       <main
         ref={contentRef}
-        className="h-full min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-3 pb-28 pt-0 [-webkit-overflow-scrolling:touch] sm:px-5 md:h-auto md:max-h-[calc(100vh-4rem)] md:p-6"
+        className="h-full min-h-0 min-w-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-3 pb-28 pt-0 [-webkit-overflow-scrolling:touch] sm:px-5 md:p-6"
       >
         <div className="sticky top-0 z-30 -mx-3 mb-3 flex items-center justify-between border-b border-slate-200 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur sm:-mx-5 sm:px-5 md:hidden">
           <button
