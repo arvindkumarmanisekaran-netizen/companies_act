@@ -54,7 +54,7 @@ function App() {
       try {
         const [act, timelineEvents] = await Promise.all([
           apiJson(`/api/timeline/act?as_of=${encodeURIComponent(selectedDate)}`, controller.signal),
-          apiJson(`/api/timeline/events?as_of=${encodeURIComponent(selectedDate)}&limit=80`, controller.signal),
+          apiJson(`/api/timeline/events?as_of=${encodeURIComponent(selectedDate)}&limit=300`, controller.signal),
         ]);
         if (requestId !== requestRef.current) return;
         setActData(act);
