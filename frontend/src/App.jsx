@@ -19,6 +19,9 @@ function App() {
   const [selectedDate, setSelectedDate] = useState("");
   const [actData, setActData] = useState(null);
   const [events, setEvents] = useState([]);
+  const [sources, setSources] = useState([]);
+  const [sourceSummary, setSourceSummary] = useState([]);
+  const [sourceTotal, setSourceTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -52,13 +55,18 @@ function App() {
       setError(null);
 
       try {
-        const [act, timelineEvents] = await Promise.all([
-          apiJson(`/api/timeline/act?as_of=${encodeURIComponent(selectedDate)}`, controller.signal),
-          apiJson(`/api/timeline/events?as_of=${encodeURIComponent(selectedDate)}&limit=300`, controller.signal),
+        const encodedDate = encodeURIComponent(selectedDate);
+        const [act, timelineEvents, parsedSources] = await Promise.all([
+          apiJson(`/api/timeline/act?as_of=${encodedDate}`, controller.signal),
+          apiJson(`/api/timeline/events?as_of=${encodedDate}&include_related_documents=false&limit=1000`, controller.signal),
+          apiJson(`/api/timeline/sources?as_of=${encodedDate}&limit=1000`, controller.signal),
         ]);
         if (requestId !== requestRef.current) return;
         setActData(act);
         setEvents(timelineEvents.items || []);
+        setSources(parsedSources.items || []);
+        setSourceSummary(parsedSources.document_types || []);
+        setSourceTotal(Number(parsedSources.total || 0));
       } catch (err) {
         if (err.name === "AbortError") return;
         console.error("Failed to load historical Act view:", err);
@@ -71,7 +79,7 @@ function App() {
           setEventsLoading(false);
         }
       }
-    }, 160);
+    }, 140);
 
     return () => {
       window.clearTimeout(timer);
@@ -99,11 +107,7 @@ function App() {
         <div className="max-w-xl rounded-lg border border-red-200 bg-red-50 p-6 text-red-700 shadow-sm">
           <h2 className="mb-2 text-lg font-semibold">Historical database unavailable</h2>
           <p className="mb-4 break-words rounded border border-red-200 bg-red-100 p-2.5 font-mono text-sm">{error}</p>
-          <button
-            type="button"
-            onClick={loadMeta}
-            className="rounded bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-800"
-          >
+          <button type="button" onClick={loadMeta} className="rounded bg-red-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-800">
             Retry
           </button>
         </div>
@@ -131,6 +135,9 @@ function App() {
           onDateChange={setSelectedDate}
           loading={loading}
           events={events}
+          sources={sources}
+          sourceSummary={sourceSummary}
+          sourceTotal={sourceTotal}
           eventsLoading={eventsLoading}
           timelineSummary={actData?.timeline_summary}
         />
