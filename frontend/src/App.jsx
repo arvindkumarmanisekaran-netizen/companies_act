@@ -21,10 +21,13 @@ function App() {
   const [events, setEvents] = useState([]);
   const [sources, setSources] = useState([]);
   const [sourceSummary, setSourceSummary] = useState([]);
+  const [activeSectionNumber, setActiveSectionNumber] = useState(null);
   const [loading, setLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [sourcesLoading, setSourcesLoading] = useState(false);
   const [error, setError] = useState(null);
   const requestRef = useRef(0);
+  const sourcesRequestRef = useRef(0);
 
   const loadMeta = useCallback(async () => {
     setError(null);
@@ -55,16 +58,13 @@ function App() {
 
       try {
         const encodedDate = encodeURIComponent(selectedDate);
-        const [act, timelineEvents, parsedSources] = await Promise.all([
+        const [act, timelineEvents] = await Promise.all([
           apiJson(`/api/timeline/act?as_of=${encodedDate}`, controller.signal),
           apiJson(`/api/timeline/events?as_of=${encodedDate}&include_related_documents=false&limit=1000`, controller.signal),
-          apiJson(`/api/timeline/sources?as_of=${encodedDate}&limit=1000`, controller.signal),
         ]);
         if (requestId !== requestRef.current) return;
         setActData(act);
         setEvents(timelineEvents.items || []);
-        setSources(parsedSources.items || []);
-        setSourceSummary(parsedSources.document_types || []);
       } catch (err) {
         if (err.name === "AbortError") return;
         console.error("Failed to load historical Act view:", err);
@@ -84,6 +84,46 @@ function App() {
       controller.abort();
     };
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (!selectedDate || !activeSectionNumber) {
+      setSources([]);
+      setSourceSummary([]);
+      setSourcesLoading(false);
+      return undefined;
+    }
+
+    const requestId = ++sourcesRequestRef.current;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSourcesLoading(true);
+      try {
+        const encodedDate = encodeURIComponent(selectedDate);
+        const encodedSection = encodeURIComponent(activeSectionNumber);
+        const parsedSources = await apiJson(
+          `/api/timeline/sources?as_of=${encodedDate}&section_number=${encodedSection}&limit=1000`,
+          controller.signal,
+        );
+        if (requestId !== sourcesRequestRef.current) return;
+        setSources(parsedSources.items || []);
+        setSourceSummary(parsedSources.document_types || []);
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        console.error("Failed to load section-scoped corpus:", err);
+        if (requestId === sourcesRequestRef.current) {
+          setSources([]);
+          setSourceSummary([]);
+        }
+      } finally {
+        if (requestId === sourcesRequestRef.current) setSourcesLoading(false);
+      }
+    }, 100);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [selectedDate, activeSectionNumber]);
 
   if (!actData && loading) {
     return (
@@ -136,6 +176,8 @@ function App() {
           sources={sources}
           sourceSummary={sourceSummary}
           eventsLoading={eventsLoading}
+          sourcesLoading={sourcesLoading}
+          activeSectionNumber={activeSectionNumber}
           timelineSummary={actData?.timeline_summary}
         />
       )}
@@ -147,7 +189,7 @@ function App() {
       )}
 
       <main className={loading ? "opacity-80 transition-opacity" : "transition-opacity"}>
-        <ActViewer data={actData} />
+        <ActViewer data={actData} onSectionChange={setActiveSectionNumber} />
       </main>
     </div>
   );
