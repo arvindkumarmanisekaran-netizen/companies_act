@@ -21,7 +21,6 @@ function App() {
   const [events, setEvents] = useState([]);
   const [sources, setSources] = useState([]);
   const [sourceSummary, setSourceSummary] = useState([]);
-  const [sourceTotal, setSourceTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -66,7 +65,6 @@ function App() {
         setEvents(timelineEvents.items || []);
         setSources(parsedSources.items || []);
         setSourceSummary(parsedSources.document_types || []);
-        setSourceTotal(Number(parsedSources.total || 0));
       } catch (err) {
         if (err.name === "AbortError") return;
         console.error("Failed to load historical Act view:", err);
@@ -137,7 +135,6 @@ function App() {
           events={events}
           sources={sources}
           sourceSummary={sourceSummary}
-          sourceTotal={sourceTotal}
           eventsLoading={eventsLoading}
           timelineSummary={actData?.timeline_summary}
         />
