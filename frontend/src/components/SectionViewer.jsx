@@ -645,6 +645,15 @@ export const SectionCard = ({ section }) => {
     "subsection_number",
   );
   const sectionSources = amendmentPdfSources(section.source_note);
+  const timelineMeta = section.timeline || {};
+  const timelineMetadata = timelineMeta.metadata || {};
+  const isOmittedAtSelectedDate = String(section.status || "").toLowerCase() === "omitted";
+  const omissionNote =
+    timelineMetadata.source_note ||
+    section.source_note ||
+    section.amendments?.[0]?.note ||
+    "";
+  const omissionEffectiveDate = timelineMetadata.effective_date || timelineMeta.valid_from;
 
   return (
     <>
@@ -673,6 +682,20 @@ export const SectionCard = ({ section }) => {
           </p>
         )}
 
+        {isOmittedAtSelectedDate && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm leading-relaxed text-red-900">
+            <div className="font-bold">Omitted as of the selected date</div>
+            {omissionEffectiveDate && (
+              <div className="mt-1 text-xs font-semibold text-red-800">
+                Effective from {omissionEffectiveDate}
+              </div>
+            )}
+            {omissionNote && (
+              <p className="mt-2 break-words text-xs text-red-800">{omissionNote}</p>
+            )}
+          </div>
+        )}
+
         {subsectionGroups.length > 0 ? (
           subsectionGroups.map((group, groupIndex) => (
             <div key={`subsection-group-${normalizeIdentifier(group.identifier)}-${groupIndex}`}>
@@ -693,8 +716,12 @@ export const SectionCard = ({ section }) => {
               ))}
             </div>
           ))
+        ) : isOmittedAtSelectedDate ? (
+          <p className="text-sm font-medium text-red-700">
+            No operative wording applies because this section stood omitted on this date.
+          </p>
         ) : (
-          <p className="italic text-gray-500">No subsections available.</p>
+          <p className="italic text-gray-500">No date-supported provision text is available for this section.</p>
         )}
       </article>
 
