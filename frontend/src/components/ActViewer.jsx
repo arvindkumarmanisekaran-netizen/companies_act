@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Menu,
   Search,
   X,
 } from "lucide-react";
 import { SectionCard } from "./SectionViewer";
 
-const sectionKey = (chapter, section, index) =>
-  `${chapter.chapter_number || "chapter"}::${section.section_number || index}::${index}`;
+const sectionKey = (chapter, section) =>
+  `${chapter.chapter_number || "chapter"}::${section.section_number || "section"}`;
 
 const sectionDisplayTitle = (section) => {
   const sectionNumber = String(section?.section_number || "");
@@ -61,9 +63,9 @@ const searchableSectionText = (chapter, section) => {
   return parts.filter(Boolean).join(" ").toLowerCase();
 };
 
-const ActViewer = ({ data }) => {
-  const [selectedChapter, setSelectedChapter] = useState(null);
+const ActViewer = ({ data, onSectionChange }) => {
   const [selectedSectionKey, setSelectedSectionKey] = useState(null);
+  const [expandedChapters, setExpandedChapters] = useState(() => new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [viewerHeight, setViewerHeight] = useState(null);
@@ -76,67 +78,77 @@ const ActViewer = ({ data }) => {
     const chaptersByNumber = new Map();
 
     rawChapters.forEach((chapter) => {
-      const chapterNumber =
-        chapter.chapter_number?.trim().toUpperCase() || "UNKNOWN";
+      const chapterNumber = chapter.chapter_number?.trim().toUpperCase() || "UNKNOWN";
       const existing = chaptersByNumber.get(chapterNumber);
       if (!existing) {
         chapterOrder.push(chapterNumber);
         chaptersByNumber.set(chapterNumber, chapter);
         return;
       }
-
       if ((chapter.sections?.length || 0) > (existing.sections?.length || 0)) {
         chaptersByNumber.set(chapterNumber, chapter);
       }
     });
 
-    return chapterOrder.map((chapterNumber) =>
-      chaptersByNumber.get(chapterNumber),
-    );
+    return chapterOrder.map((chapterNumber) => chaptersByNumber.get(chapterNumber));
   }, [rawChapters]);
 
-  const sectionEntries = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+  const allSectionEntries = useMemo(() => {
     const entries = [];
-
     chapters.forEach((chapter) => {
-      if (selectedChapter && chapter.chapter_number !== selectedChapter) return;
-      (chapter.sections || []).forEach((section, index) => {
-        if (term && !searchableSectionText(chapter, section).includes(term)) {
-          return;
-        }
-        entries.push({
-          chapter,
-          section,
-          key: sectionKey(chapter, section, index),
-        });
+      (chapter.sections || []).forEach((section) => {
+        entries.push({ chapter, section, key: sectionKey(chapter, section) });
       });
     });
-
     return entries;
-  }, [chapters, searchTerm, selectedChapter]);
+  }, [chapters]);
+
+  const searchResults = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return [];
+    return allSectionEntries.filter((entry) =>
+      searchableSectionText(entry.chapter, entry.section).includes(term),
+    );
+  }, [allSectionEntries, searchTerm]);
 
   useEffect(() => {
-    if (!sectionEntries.length) {
+    if (!allSectionEntries.length) {
       setSelectedSectionKey(null);
       return;
     }
-    if (!sectionEntries.some((entry) => entry.key === selectedSectionKey)) {
-      setSelectedSectionKey(sectionEntries[0].key);
+
+    if (!allSectionEntries.some((entry) => entry.key === selectedSectionKey)) {
+      setSelectedSectionKey(allSectionEntries[0].key);
     }
-  }, [sectionEntries, selectedSectionKey]);
+  }, [allSectionEntries, selectedSectionKey]);
+
+  const selectedIndex = Math.max(
+    0,
+    allSectionEntries.findIndex((entry) => entry.key === selectedSectionKey),
+  );
+  const selectedEntry = allSectionEntries[selectedIndex] || null;
+  const previousEntry = allSectionEntries[selectedIndex - 1];
+  const nextEntry = allSectionEntries[selectedIndex + 1];
+
+  useEffect(() => {
+    if (!selectedEntry) return;
+    setExpandedChapters((current) => {
+      if (current.has(selectedEntry.chapter.chapter_number)) return current;
+      const next = new Set(current);
+      next.add(selectedEntry.chapter.chapter_number);
+      return next;
+    });
+    onSectionChange?.(selectedEntry.section.section_number || null);
+  }, [selectedEntry?.key, onSectionChange]);
 
   useEffect(() => {
     const updateViewerHeight = () => {
       const node = viewerRef.current;
       if (!node) return;
-
       const top = Math.max(0, node.getBoundingClientRect().top);
       const nextHeight = Math.max(320, Math.floor(window.innerHeight - top));
       setViewerHeight((current) =>
-        current !== null && Math.abs(current - nextHeight) < 2
-          ? current
-          : nextHeight,
+        current !== null && Math.abs(current - nextHeight) < 2 ? current : nextHeight,
       );
     };
 
@@ -144,12 +156,8 @@ const ActViewer = ({ data }) => {
     const frame = window.requestAnimationFrame(updateViewerHeight);
     window.addEventListener("resize", updateViewerHeight);
     window.addEventListener("scroll", updateViewerHeight, { passive: true });
-
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? null
-        : new ResizeObserver(updateViewerHeight);
-    if (observer) observer.observe(document.body);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateViewerHeight);
+    observer?.observe(document.body);
 
     return () => {
       window.cancelAnimationFrame(frame);
@@ -161,51 +169,45 @@ const ActViewer = ({ data }) => {
 
   useEffect(() => {
     if (!mobileNavOpen) return undefined;
-
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event) => {
       if (event.key === "Escape") setMobileNavOpen(false);
     };
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", closeOnEscape);
-
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [mobileNavOpen]);
 
-  const selectedIndex = Math.max(
-    0,
-    sectionEntries.findIndex((entry) => entry.key === selectedSectionKey),
-  );
-  const selectedEntry = sectionEntries[selectedIndex] || null;
-  const previousEntry = sectionEntries[selectedIndex - 1];
-  const nextEntry = sectionEntries[selectedIndex + 1];
-
   const scrollReaderToTop = () => {
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const goToSection = (index) => {
-    const entry = sectionEntries[index];
+  const selectEntry = (entry) => {
     if (!entry) return;
     setSelectedSectionKey(entry.key);
     setMobileNavOpen(false);
+    setSearchTerm("");
     scrollReaderToTop();
   };
 
-  const chooseChapter = (chapterNumber) => {
-    setSelectedChapter(chapterNumber);
-    setSelectedSectionKey(null);
+  const goToSection = (index) => {
+    selectEntry(allSectionEntries[index]);
+  };
+
+  const toggleChapter = (chapterNumber) => {
+    setExpandedChapters((current) => {
+      const next = new Set(current);
+      if (next.has(chapterNumber)) next.delete(chapterNumber);
+      else next.add(chapterNumber);
+      return next;
+    });
   };
 
   if (!data || !data.chapters) {
-    return (
-      <div className="p-8 text-center text-gray-500">
-        No document data available.
-      </div>
-    );
+    return <div className="p-8 text-center text-gray-500">No document data available.</div>;
   }
 
   return (
@@ -225,18 +227,14 @@ const ActViewer = ({ data }) => {
 
       <aside
         aria-label="Act navigation"
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[88vw] max-w-sm shrink-0 transform flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-200 md:relative md:inset-auto md:z-20 md:h-full md:w-80 md:translate-x-0 md:shadow-none ${
-          mobileNavOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[88vw] max-w-sm shrink-0 transform flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-200 md:relative md:inset-auto md:z-20 md:h-full md:w-80 md:translate-x-0 md:shadow-none ${mobileNavOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 bg-blue-950 px-4 py-3 text-white md:hidden">
           <div className="flex items-center gap-2">
             <BookOpen size={19} aria-hidden="true" />
             <div>
               <div className="text-sm font-bold">Browse the Act</div>
-              <div className="text-xs text-blue-200">
-                Chapters and sections
-              </div>
+              <div className="text-xs text-blue-200">Chapter → section</div>
             </div>
           </div>
           <button
@@ -251,11 +249,7 @@ const ActViewer = ({ data }) => {
 
         <div className="border-b border-slate-200 p-4">
           <label className="relative block">
-            <Search
-              size={17}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              aria-hidden="true"
-            />
+            <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
             <span className="sr-only">Search the Act</span>
             <input
               type="search"
@@ -267,91 +261,75 @@ const ActViewer = ({ data }) => {
           </label>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col p-3">
-          <div className="mb-2 flex items-center justify-between px-1">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Chapters
-            </span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
-              {chapters.length}
-            </span>
-          </div>
+        <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
+          {searchTerm.trim() ? (
+            <div>
+              <div className="mb-2 flex items-center justify-between px-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Search results</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">{searchResults.length}</span>
+              </div>
+              <div className="space-y-1">
+                {searchResults.map((entry) => (
+                  <button
+                    type="button"
+                    key={entry.key}
+                    onClick={() => selectEntry(entry)}
+                    className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${selectedEntry?.key === entry.key ? "border-blue-200 bg-blue-50 text-blue-950" : "border-transparent text-slate-700 hover:bg-slate-100"}`}
+                  >
+                    <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400">{entry.chapter.chapter_number}</span>
+                    <span className="block text-sm font-bold">Section {entry.section.section_number}</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">{sectionDisplayTitle(entry.section)}</span>
+                  </button>
+                ))}
+                {!searchResults.length && <p className="px-3 py-8 text-center text-sm text-slate-500">No matching sections</p>}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="mb-2 px-1 text-xs font-bold uppercase tracking-wider text-slate-500">Act structure</div>
+              {chapters.map((chapter) => {
+                const chapterNumber = chapter.chapter_number;
+                const expanded = expandedChapters.has(chapterNumber);
+                const selectedInChapter = selectedEntry?.chapter.chapter_number === chapterNumber;
+                return (
+                  <div key={chapterNumber} className={`overflow-hidden rounded-xl border ${selectedInChapter ? "border-blue-200 bg-blue-50/40" : "border-slate-200 bg-white"}`}>
+                    <button
+                      type="button"
+                      onClick={() => toggleChapter(chapterNumber)}
+                      className="flex w-full items-start gap-2 px-3 py-3 text-left hover:bg-slate-50"
+                      aria-expanded={expanded}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-[11px] font-extrabold uppercase tracking-wide text-blue-800">{chapterNumber}</span>
+                        <span className="mt-0.5 block text-sm font-semibold leading-snug text-slate-700">{chapter.chapter_title}</span>
+                      </div>
+                      {expanded ? <ChevronUp size={17} className="mt-1 shrink-0 text-slate-400" /> : <ChevronDown size={17} className="mt-1 shrink-0 text-slate-400" />}
+                    </button>
 
-          <div className="max-h-[32dvh] touch-pan-y space-y-1 overflow-y-auto overscroll-contain border-b border-slate-200 pb-3 [-webkit-overflow-scrolling:touch] md:max-h-[31vh]">
-            <button
-              type="button"
-              onClick={() => chooseChapter(null)}
-              className={`w-full rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${
-                selectedChapter === null
-                  ? "bg-blue-50 text-blue-950 ring-1 ring-inset ring-blue-200"
-                  : "text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              All chapters
-            </button>
-
-            {chapters.map((chapter) => (
-              <button
-                type="button"
-                key={chapter.chapter_number}
-                onClick={() => chooseChapter(chapter.chapter_number)}
-                className={`w-full rounded-lg px-3 py-2.5 text-left leading-snug ${
-                  selectedChapter === chapter.chapter_number
-                    ? "bg-blue-950 text-white shadow-sm"
-                    : "text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <span className="block text-xs font-bold uppercase tracking-wide">
-                  {chapter.chapter_number}
-                </span>
-                <span
-                  className={`mt-0.5 block truncate text-sm ${
-                    selectedChapter === chapter.chapter_number
-                      ? "text-blue-100"
-                      : "text-slate-500"
-                  }`}
-                >
-                  {chapter.chapter_title}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="mb-2 mt-3 flex items-center justify-between px-1">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Sections
-            </span>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
-              {sectionEntries.length}
-            </span>
-          </div>
-
-          <div className="min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain pb-[calc(1rem+env(safe-area-inset-bottom))] [-webkit-overflow-scrolling:touch]">
-            {sectionEntries.map((entry, index) => (
-              <button
-                type="button"
-                key={entry.key}
-                onClick={() => goToSection(index)}
-                className={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
-                  selectedEntry?.key === entry.key
-                    ? "border-blue-200 bg-blue-50 text-blue-950"
-                    : "border-transparent text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <span className="block text-sm font-bold">
-                  Section {entry.section.section_number}
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">
-                  {sectionDisplayTitle(entry.section)}
-                </span>
-              </button>
-            ))}
-            {!sectionEntries.length && (
-              <p className="px-3 py-6 text-center text-sm text-slate-500">
-                No matching sections
-              </p>
-            )}
-          </div>
+                    {expanded && (
+                      <div className="border-t border-slate-200 bg-white p-1.5">
+                        {(chapter.sections || []).map((section) => {
+                          const key = sectionKey(chapter, section);
+                          const selected = selectedEntry?.key === key;
+                          return (
+                            <button
+                              type="button"
+                              key={key}
+                              onClick={() => selectEntry({ chapter, section, key })}
+                              className={`w-full rounded-lg px-3 py-2.5 text-left transition ${selected ? "bg-blue-950 text-white shadow-sm" : "text-slate-700 hover:bg-slate-100"}`}
+                            >
+                              <span className="block text-sm font-bold">Section {section.section_number}</span>
+                              <span className={`mt-0.5 block truncate text-xs ${selected ? "text-blue-100" : "text-slate-500"}`}>{sectionDisplayTitle(section)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -370,12 +348,8 @@ const ActViewer = ({ data }) => {
           </button>
           {selectedEntry && (
             <div className="min-w-0 pl-3 text-right">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700">
-                {selectedEntry.chapter.chapter_number}
-              </div>
-              <div className="truncate text-sm font-bold text-slate-900">
-                Section {selectedEntry.section.section_number}
-              </div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-blue-700">{selectedEntry.chapter.chapter_number}</div>
+              <div className="truncate text-sm font-bold text-slate-900">Section {selectedEntry.section.section_number}</div>
             </div>
           )}
         </div>
@@ -384,18 +358,12 @@ const ActViewer = ({ data }) => {
           <div className="mx-auto max-w-5xl">
             <div className="mb-3 border-b border-slate-300 pb-3 pt-1 md:mb-4 md:flex md:items-end md:justify-between md:gap-4 md:pb-4">
               <div className="min-w-0">
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
-                  {selectedEntry.chapter.chapter_number}
-                </span>
-                <h2 className="mt-0.5 text-lg font-extrabold leading-tight text-slate-900 sm:text-xl">
-                  {selectedEntry.chapter.chapter_title}
-                </h2>
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-700">{selectedEntry.chapter.chapter_number}</span>
+                <h2 className="mt-0.5 text-lg font-extrabold leading-tight text-slate-900 sm:text-xl">{selectedEntry.chapter.chapter_title}</h2>
                 <p className="mt-2 text-sm font-semibold leading-snug text-slate-600">
-                  Section {selectedEntry.section.section_number}:{" "}
-                  {sectionDisplayTitle(selectedEntry.section)}
+                  Section {selectedEntry.section.section_number}: {sectionDisplayTitle(selectedEntry.section)}
                 </p>
               </div>
-
               <div className="hidden shrink-0 gap-2 md:flex">
                 <button
                   type="button"
@@ -403,30 +371,25 @@ const ActViewer = ({ data }) => {
                   disabled={selectedIndex === 0}
                   className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <ChevronLeft size={17} aria-hidden="true" />
-                  Previous
+                  <ChevronLeft size={17} aria-hidden="true" /> Previous
                 </button>
                 <button
                   type="button"
                   onClick={() => goToSection(selectedIndex + 1)}
-                  disabled={selectedIndex === sectionEntries.length - 1}
+                  disabled={selectedIndex === allSectionEntries.length - 1}
                   className="inline-flex items-center gap-1 rounded-lg bg-blue-950 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-900 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Next
-                  <ChevronRight size={17} aria-hidden="true" />
+                  Next <ChevronRight size={17} aria-hidden="true" />
                 </button>
               </div>
             </div>
-
             <SectionCard section={selectedEntry.section} />
           </div>
         ) : (
           <div className="mx-auto mt-6 max-w-lg rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
             <Search className="mx-auto mb-3 text-slate-400" aria-hidden="true" />
             <h2 className="font-bold text-slate-900">No matching sections</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Try another search or choose all chapters.
-            </p>
+            <p className="mt-1 text-sm text-slate-500">Try another search.</p>
           </div>
         )}
       </main>
@@ -444,14 +407,8 @@ const ActViewer = ({ data }) => {
           >
             <ChevronLeft className="shrink-0" size={20} aria-hidden="true" />
             <span className="min-w-0">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Previous
-              </span>
-              <span className="block truncate text-sm font-bold">
-                {previousEntry
-                  ? `Section ${previousEntry.section.section_number}`
-                  : "Start"}
-              </span>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Previous</span>
+              <span className="block truncate text-sm font-bold">{previousEntry ? `Section ${previousEntry.section.section_number}` : "Start"}</span>
             </span>
           </button>
           <button
@@ -461,14 +418,8 @@ const ActViewer = ({ data }) => {
             className="flex min-h-12 min-w-0 items-center justify-end gap-2 rounded-xl bg-blue-950 px-3 text-right text-white disabled:opacity-35"
           >
             <span className="min-w-0">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide text-blue-200">
-                Next
-              </span>
-              <span className="block truncate text-sm font-bold">
-                {nextEntry
-                  ? `Section ${nextEntry.section.section_number}`
-                  : "End"}
-              </span>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-blue-200">Next</span>
+              <span className="block truncate text-sm font-bold">{nextEntry ? `Section ${nextEntry.section.section_number}` : "End"}</span>
             </span>
             <ChevronRight className="shrink-0" size={20} aria-hidden="true" />
           </button>
