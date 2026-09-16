@@ -2,6 +2,15 @@ import React, { useMemo, useState } from "react";
 import { CalendarDays, ChevronDown, ChevronUp, Clock3, Database, RotateCcw } from "lucide-react";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ACT_ENACTMENT_DATE = "2013-08-29";
+const CHANGE_RELATIONSHIPS = new Set([
+  "amends",
+  "substitutes",
+  "inserts",
+  "omits",
+  "commences",
+  "corrects",
+]);
 
 const parseDay = (value) => {
   const [year, month, day] = String(value || "").split("-").map(Number);
@@ -27,6 +36,40 @@ const relationshipLabel = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+const dateBasisLabel = (value) => {
+  if (value === "effective_date") return "effective date";
+  if (value === "enactment_date") return "enactment date";
+  return "publication date";
+};
+
+const EventCard = ({ event }) => (
+  <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-900">
+        {event.document.instrument_label}
+      </span>
+      <span className="text-[10px] font-semibold text-slate-500">{event.event_date}</span>
+      <span className="text-[10px] font-semibold text-slate-500">{relationshipLabel(event.relationship_type)}</span>
+      <span
+        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+          event.legal_effect_confirmed
+            ? "bg-emerald-50 text-emerald-800"
+            : "bg-slate-100 text-slate-500"
+        }`}
+      >
+        {event.legal_effect_confirmed ? "resolved legal effect" : dateBasisLabel(event.date_basis)}
+      </span>
+      {event.target?.section_number && (
+        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
+          Section {event.target.section_number}
+          {event.target.label ? ` ${event.target.label}` : ""}
+        </span>
+      )}
+    </div>
+    <p className="mt-1 line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{event.document.title}</p>
+  </div>
+);
+
 const TimelineControls = ({
   meta,
   selectedDate,
@@ -37,24 +80,36 @@ const TimelineControls = ({
   timelineSummary,
 }) => {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const min = meta?.min_date || "2013-08-29";
+  const min = ACT_ENACTMENT_DATE;
   const max = meta?.max_date || new Date().toISOString().slice(0, 10);
   const minDay = useMemo(() => dayValue(min), [min]);
   const maxDay = useMemo(() => dayValue(max), [max]);
   const selectedDay = dayValue(selectedDate || max);
+  const changeEvents = useMemo(
+    () => events.filter((event) => CHANGE_RELATIONSHIPS.has(event.relationship_type)),
+    [events],
+  );
+  const contextEvents = useMemo(
+    () => events.filter((event) => !CHANGE_RELATIONSHIPS.has(event.relationship_type)),
+    [events],
+  );
+  const totalDocuments = useMemo(
+    () => (meta?.document_types || []).reduce((sum, item) => sum + Number(item.count || 0), 0),
+    [meta?.document_types],
+  );
 
   return (
     <section className="border-b border-slate-200 bg-white shadow-sm" aria-label="Historical Act timeline">
       <div className="mx-auto max-w-[1600px] px-3 py-3 sm:px-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-extrabold text-slate-900">
+            <div className="flex flex-wrap items-center gap-2 text-sm font-extrabold text-slate-900">
               <Clock3 size={18} className="text-blue-800" aria-hidden="true" />
               Act as it stood on <span className="text-blue-900">{formatDate(selectedDate)}</span>
               {loading && <span className="text-xs font-medium text-slate-500">Updating…</span>}
             </div>
-            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-slate-600">
-              Move the slider to reconstruct resolved historical wording. Amendment history shown on each provision is limited to changes effective by the selected date.
+            <p className="mt-1 max-w-4xl text-xs leading-relaxed text-slate-600">
+              Move the slider to reconstruct the Act from the historical provision-version database. Resolved wording, omissions and substitutions update with the selected date; related instruments and normalized legal relationships are also limited to material available by that date.
             </p>
           </div>
 
@@ -84,7 +139,7 @@ const TimelineControls = ({
         </div>
 
         <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
-          <span className="text-[10px] font-bold text-slate-500 sm:text-xs">{min.slice(0, 4)}</span>
+          <span className="text-[10px] font-bold text-slate-500 sm:text-xs">2013</span>
           <input
             type="range"
             min={minDay}
@@ -101,6 +156,9 @@ const TimelineControls = ({
           <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
             <Database size={13} aria-hidden="true" />
             {meta?.version_rows ?? 0} resolved version rows
+          </span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
+            {totalDocuments.toLocaleString("en-IN")} parsed legal documents
           </span>
           {(meta?.unresolved_historical_changes ?? 0) > 0 && (
             <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-semibold text-amber-800">
@@ -123,9 +181,9 @@ const TimelineControls = ({
         </div>
 
         {detailsOpen && (
-          <div className="mt-3 grid gap-4 border-t border-slate-200 pt-3 lg:grid-cols-2">
+          <div className="mt-3 grid gap-4 border-t border-slate-200 pt-3 xl:grid-cols-3">
             <div>
-              <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Parsed document types</h2>
+              <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Parsed document types in the database</h2>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(meta?.document_types || []).map((item) => (
                   <span
@@ -138,39 +196,47 @@ const TimelineControls = ({
                 ))}
               </div>
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                The corpus includes the principal Act structure plus Amendment Acts, Amendment Rules, Rules, Notifications, Commencement Notifications, Circulars, Corrigenda, Orders, Forms, Accounting Standards / Ind AS, Removal of Difficulties Orders and Regulations. These instruments are linked to provisions through the normalized legal relationship graph.
+                The historical view is backed by the principal Companies Act structure and the parsed corpus: Amendment Acts, Amendment Rules, Rules, Notifications, Commencement Notifications, Circulars, Corrigenda, Orders, Forms, Accounting Standards / Ind AS, Removal of Difficulties Orders and Regulations. The normalized relationship graph links these instruments to the relevant provisions.
               </p>
+              {meta?.latest_corpus_date && (
+                <p className="mt-2 text-[11px] font-semibold text-slate-500">
+                  Latest dated corpus material: {meta.latest_corpus_date}
+                </p>
+              )}
             </div>
 
             <div>
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Latest corpus activity by selected date</h2>
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Change-linked instruments up to this date</h2>
                 {eventsLoading && <span className="text-[11px] text-slate-400">Loading…</span>}
               </div>
-              <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1">
-                {events.slice(0, 12).map((event) => (
-                  <div key={`${event.relationship_id}-${event.event_date}`} className="rounded-lg border border-slate-200 p-2.5">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-900">
-                        {event.document.instrument_label}
-                      </span>
-                      <span className="text-[10px] font-semibold text-slate-500">{event.event_date}</span>
-                      <span className="text-[10px] font-semibold text-slate-500">{relationshipLabel(event.relationship_type)}</span>
-                      {!event.legal_effect_confirmed && (
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">publication event</span>
-                      )}
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs font-semibold leading-snug text-slate-800">{event.document.title}</p>
-                  </div>
+              <div className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-1">
+                {changeEvents.slice(0, 18).map((event) => (
+                  <EventCard key={`${event.relationship_id}-${event.event_date}`} event={event} />
                 ))}
-                {!eventsLoading && !events.length && (
-                  <p className="py-3 text-xs text-slate-500">No dated corpus events were found up to this date.</p>
+                {!eventsLoading && !changeEvents.length && (
+                  <p className="py-3 text-xs text-slate-500">No dated change-linked instruments were found up to this date.</p>
                 )}
               </div>
             </div>
 
-            <p className="lg:col-span-2 text-[11px] leading-relaxed text-slate-500">
-              <strong>Date rule:</strong> publication dates are shown as corpus events, but they are not treated as legal commencement dates. Historical wording changes only when an explicit or deterministically resolved effective date is available.
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Other related corpus activity</h2>
+                {eventsLoading && <span className="text-[11px] text-slate-400">Loading…</span>}
+              </div>
+              <div className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-1">
+                {contextEvents.slice(0, 18).map((event) => (
+                  <EventCard key={`${event.relationship_id}-${event.event_date}`} event={event} />
+                ))}
+                {!eventsLoading && !contextEvents.length && (
+                  <p className="py-3 text-xs text-slate-500">No other dated corpus relationships were found up to this date.</p>
+                )}
+              </div>
+            </div>
+
+            <p className="xl:col-span-3 text-[11px] leading-relaxed text-slate-500">
+              <strong>Date rule:</strong> publication dates are useful for showing when a parsed document entered the corpus, but publication alone is not treated as the legal effective date of a change. The Act wording changes on the slider only where an explicit or deterministically resolved effective date is available in the historical provision-version data. Items without that certainty remain visible as dated source activity rather than being silently applied to the statutory text.
             </p>
           </div>
         )}
