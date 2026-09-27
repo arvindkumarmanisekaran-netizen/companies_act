@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import DatePicker from "./DatePicker";
 import { getRememberedUser } from "../userSession";
+import { captureEvent } from "../analytics";
 
 const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const adminFetch = (path, options = {}) => {
@@ -200,6 +201,10 @@ const PdfDocumentViewer = ({ source }) => {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    captureEvent("pdf_opened", { page: Number(source.page) || 1, source_label: source.label || source.file });
+  }, [source.file, source.label, source.page]);
+
+  useEffect(() => {
     const node = containerRef.current;
     if (!node) return undefined;
 
@@ -325,7 +330,9 @@ const PdfDocumentViewer = ({ source }) => {
   }, [containerWidth, pageNumber, pdfDocument, zoom]);
 
   const changePage = (nextPage) => {
-    setPageNumber(Math.min(Math.max(nextPage, 1), pageCount));
+    const page = Math.min(Math.max(nextPage, 1), pageCount);
+    setPageNumber(page);
+    captureEvent("pdf_page_changed", { page });
     containerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -391,7 +398,7 @@ const PdfDocumentViewer = ({ source }) => {
         <div className="ml-1 flex shrink-0 items-center rounded-lg border border-slate-300 bg-slate-50">
           <button
             type="button"
-            onClick={() => setZoom((value) => Math.max(0.75, value - 0.25))}
+            onClick={() => setZoom((value) => { const next = Math.max(0.75, value - 0.25); captureEvent("pdf_zoom_changed", { zoom: next }); return next; })}
             disabled={zoom <= 0.75}
             className="grid size-10 place-items-center text-slate-700 disabled:opacity-35"
             aria-label="Zoom out"
@@ -403,7 +410,7 @@ const PdfDocumentViewer = ({ source }) => {
           </span>
           <button
             type="button"
-            onClick={() => setZoom((value) => Math.min(2, value + 0.25))}
+            onClick={() => setZoom((value) => { const next = Math.min(2, value + 0.25); captureEvent("pdf_zoom_changed", { zoom: next }); return next; })}
             disabled={zoom >= 2}
             className="grid size-10 place-items-center text-slate-700 disabled:opacity-35"
             aria-label="Zoom in"
@@ -552,11 +559,11 @@ const ContinuousPdfViewer = ({ source }) => {
     <div className="flex min-h-0 flex-1 flex-col bg-slate-200">
       <div className="flex shrink-0 items-center justify-end border-b border-slate-300 bg-white p-2">
         <div className="flex items-center rounded-lg border border-slate-300 bg-slate-50">
-          <button type="button" onClick={() => setZoom((value) => Math.max(0.75, value - 0.25))} disabled={zoom <= 0.75} className="grid size-10 place-items-center disabled:opacity-35" aria-label="Zoom out">
+          <button type="button" onClick={() => setZoom((value) => { const next = Math.max(0.75, value - 0.25); captureEvent("pdf_zoom_changed", { zoom: next }); return next; })} disabled={zoom <= 0.75} className="grid size-10 place-items-center disabled:opacity-35" aria-label="Zoom out">
             <Minus size={18} />
           </button>
           <span className="min-w-12 text-center text-xs font-bold text-slate-600">{Math.round(zoom * 100)}%</span>
-          <button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.25))} disabled={zoom >= 2} className="grid size-10 place-items-center disabled:opacity-35" aria-label="Zoom in">
+          <button type="button" onClick={() => setZoom((value) => { const next = Math.min(2, value + 0.25); captureEvent("pdf_zoom_changed", { zoom: next }); return next; })} disabled={zoom >= 2} className="grid size-10 place-items-center disabled:opacity-35" aria-label="Zoom in">
             <Plus size={18} />
           </button>
         </div>
@@ -1619,7 +1626,10 @@ export const SectionCard = ({
 
   const openAmendment = (sourceNote) => {
     const sources = amendmentPdfSources(sourceNote);
-    if (sources.length) setPdfSources(sources);
+    if (sources.length) {
+      captureEvent("amendment_source_opened", { source_count: sources.length });
+      setPdfSources(sources);
+    }
   };
 
   const sectionNumber = String(section.section_number || "");
