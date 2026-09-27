@@ -15,7 +15,6 @@ import {
   Moon,
   Search,
   Settings,
-  Share2,
   Sun,
   Type,
   X,
@@ -498,6 +497,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
 
     setFeedbackBusy(true);
     setSettingsNotice("");
+    captureEvent("feedback_started", { section_number: selectedEntry?.section?.section_number || null });
     try {
       const response = await fetch(`${apiBaseUrl}/api/feedback`, {
         method: "POST",
@@ -519,6 +519,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
       captureEvent("feedback_submitted", { section_number: selectedEntry?.section?.section_number || null });
       setFeedbackToast({ type: "success", message: "Feedback sent to both administrators." });
     } catch (error) {
+      captureEvent("feedback_failed", { section_number: selectedEntry?.section?.section_number || null, error: error.message || "unknown" });
       setFeedbackToast({ type: "error", message: error.message || "Could not send feedback. Please try again." });
     } finally {
       setFeedbackBusy(false);
@@ -764,11 +765,11 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center gap-2"><Type size={18} className="text-blue-900"/><h3 className="font-extrabold text-slate-900">Font settings</h3></div>
                 <label className="block text-xs font-bold text-slate-600">Text size: {fontScale}%<input type="range" min="85" max="130" step="5" value={fontScale} onChange={(event) => { const value = Number(event.target.value); setFontScale(value); captureEvent("font_size_changed", { font_scale: value }); }} className="mt-2 w-full accent-blue-950"/></label>
-                <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setFontFamily("sans")} className={`rounded-xl border px-3 py-2.5 text-sm font-bold ${fontFamily === "sans" ? "border-blue-900 bg-blue-50 text-blue-950" : "border-slate-300 text-slate-700"}`}>Sans serif</button><button type="button" onClick={() => setFontFamily("serif")} className={`rounded-xl border px-3 py-2.5 font-serif text-sm font-bold ${fontFamily === "serif" ? "border-blue-900 bg-blue-50 text-blue-950" : "border-slate-300 text-slate-700"}`}>Serif</button></div>
+                <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => { setFontFamily("sans"); captureEvent("font_family_changed", { font_family: "sans" }); }} className={`rounded-xl border px-3 py-2.5 text-sm font-bold ${fontFamily === "sans" ? "border-blue-900 bg-blue-50 text-blue-950" : "border-slate-300 text-slate-700"}`}>Sans serif</button><button type="button" onClick={() => { setFontFamily("serif"); captureEvent("font_family_changed", { font_family: "serif" }); }} className={`rounded-xl border px-3 py-2.5 font-serif text-sm font-bold ${fontFamily === "serif" ? "border-blue-900 bg-blue-50 text-blue-950" : "border-slate-300 text-slate-700"}`}>Serif</button></div>
               </section>
 
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-blue-50 text-blue-950"><Share2 size={19}/></span><div className="min-w-0 flex-1"><h3 className="font-extrabold text-slate-900">Share</h3><p className="text-xs text-slate-500">Share the Companies Act app link.</p></div><button type="button" onClick={shareApp} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white">Share</button></div>
+              <section className="hidden">
+                <div className="hidden" />
               </section>
 
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
