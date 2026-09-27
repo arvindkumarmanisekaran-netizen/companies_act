@@ -301,6 +301,10 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
   const goToSection = (index, entries = sectionEntries, animate = true, scrollToTop = true) => {
     const entry = entries[index];
     if (!entry) return;
+    captureEvent("section_navigation", {
+      section_number: entry.section.section_number,
+      navigation: index < selectedIndex ? "previous" : "next",
+    });
     preserveBrowseContextRef.current = false;
     setNavigationDirection(animate ? (index < selectedIndex ? "back" : "forward") : "none");
     setSelectedSectionKey(entry.key);
@@ -389,6 +393,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
     preserveBrowseContextRef.current = false;
     setSelectedChapter(chapterNumber);
     setSelectedSectionKey(null);
+    captureEvent("chapter_selected", { chapter_number: chapterNumber || "all" });
   };
 
   const revealProvision = (provisionId, attempt = 0) => {
@@ -464,6 +469,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
 
   const shareApp = async () => {
     setSettingsNotice("");
+    captureEvent("share_started", { method: navigator.share ? "native" : "clipboard" });
     try {
       if (navigator.share) {
         await navigator.share({
@@ -472,10 +478,12 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
           url: APP_SHARE_URL,
         });
         setSettingsNotice("Share sheet opened.");
+        captureEvent("share_completed", { method: "native" });
         return;
       }
       await navigator.clipboard.writeText(APP_SHARE_URL);
       setSettingsNotice("App link copied.");
+      captureEvent("share_completed", { method: "clipboard" });
     } catch (error) {
       if (error?.name !== "AbortError") setSettingsNotice("Could not share automatically. The app link is companiesact.site.");
     }
@@ -725,7 +733,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
 
         <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 md:pb-3">
           <div className="flex min-w-0 items-center gap-2 text-blue-950"><BookOpen size={20}/><div className="min-w-0"><strong className="block truncate text-sm">Companies Act, 2013</strong><span className="block truncate text-[11px] text-slate-500">{userName || "India’s company law reference"}</span></div></div>
-          <button type="button" onClick={() => { setSettingsNotice(""); setSettingsOpen(true); }} className="motion-control grid size-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-slate-50 text-blue-950" aria-label="Open settings"><Settings size={21}/></button>
+          <button type="button" onClick={() => { setSettingsNotice(""); setSettingsOpen(true); captureEvent("settings_opened"); }} className="motion-control grid size-11 shrink-0 place-items-center rounded-xl border border-slate-300 bg-slate-50 text-blue-950" aria-label="Open settings"><Settings size={21}/></button>
         </div>
 
         {settingsOpen && (
@@ -749,13 +757,13 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
                     ["light", "Light", Sun],
                     ["dark", "Dark", Moon],
                     ["contrast", "High contrast", Contrast],
-                  ].map(([value, label, Icon]) => <button key={value} type="button" onClick={() => setThemePreference(value)} className={`motion-control flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-bold ${themePreference === value ? "border-blue-900 bg-blue-950 text-white" : "border-slate-300 bg-white text-slate-700"}`}><Icon size={16}/>{label}</button>)}
+                  ].map(([value, label, Icon]) => <button key={value} type="button" onClick={() => { setThemePreference(value); captureEvent("theme_changed", { theme: value }); }} className={`motion-control flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-bold ${themePreference === value ? "border-blue-900 bg-blue-950 text-white" : "border-slate-300 bg-white text-slate-700"}`}><Icon size={16}/>{label}</button>)}
                 </div>
               </section>
 
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center gap-2"><Type size={18} className="text-blue-900"/><h3 className="font-extrabold text-slate-900">Font settings</h3></div>
-                <label className="block text-xs font-bold text-slate-600">Text size: {fontScale}%<input type="range" min="85" max="130" step="5" value={fontScale} onChange={(event) => setFontScale(Number(event.target.value))} className="mt-2 w-full accent-blue-950"/></label>
+                <label className="block text-xs font-bold text-slate-600">Text size: {fontScale}%<input type="range" min="85" max="130" step="5" value={fontScale} onChange={(event) => { const value = Number(event.target.value); setFontScale(value); captureEvent("font_size_changed", { font_scale: value }); }} className="mt-2 w-full accent-blue-950"/></label>
                 <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setFontFamily("sans")} className={`rounded-xl border px-3 py-2.5 text-sm font-bold ${fontFamily === "sans" ? "border-blue-900 bg-blue-50 text-blue-950" : "border-slate-300 text-slate-700"}`}>Sans serif</button><button type="button" onClick={() => setFontFamily("serif")} className={`rounded-xl border px-3 py-2.5 font-serif text-sm font-bold ${fontFamily === "serif" ? "border-blue-900 bg-blue-50 text-blue-950" : "border-slate-300 text-slate-700"}`}>Serif</button></div>
               </section>
 

@@ -58,6 +58,7 @@ function PublicApp({ userName, onLogout }) {
       })
       .then((data) => {
         setActData(data);
+        captureEvent("reader_ready", { chapter_count: data?.chapters?.length || 0 });
         setLoading(false);
       })
       .catch((err) => {
