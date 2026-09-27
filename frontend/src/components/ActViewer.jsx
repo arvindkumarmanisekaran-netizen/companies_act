@@ -80,7 +80,7 @@ const searchableSectionText = (chapter, section) => {
   return parts.filter(Boolean).join(" ").toLowerCase();
 };
 
-const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout, onSectionChange }) => {
+const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout }) => {
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [selectedSectionKey, setSelectedSectionKey] = useState(null);
   const [expandedChapters, setExpandedChapters] = useState(() => new Set());
@@ -261,9 +261,6 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout,
     activeSectionEntries.findIndex((entry) => entry.key === selectedSectionKey),
   );
   const selectedEntry = activeSectionEntries[selectedIndex] || null;
-  useEffect(() => {
-    onSectionChange?.(selectedEntry?.section?.section_number || null);
-  }, [onSectionChange, selectedEntry?.section?.section_number]);
   const swipeSelectedIndex = Math.max(
     0,
     allSectionEntries.findIndex((entry) => entry.key === selectedSectionKey),
