@@ -1,0 +1,110 @@
+import React, { useCallback, useEffect, useState } from "react";
+import { History, Inbox, LogOut, ShieldCheck, X } from "lucide-react";
+import ActViewer from "./components/ActViewer";
+import AdminInbox from "./components/AdminInbox";
+import DatePicker from "./components/DatePicker";
+import { forgetUser, getRememberedUser } from "./userSession";
+
+const ACT_START_DATE = "2013-08-29";
+const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const dateToDay = (value) => Math.floor(Date.parse(`${value}T00:00:00Z`) / 86400000);
+const dayToDate = (value) => new Date(Number(value) * 86400000).toISOString().slice(0, 10);
+
+async function api(path, options = {}) {
+  const adminName = getRememberedUser().trim().toLowerCase();
+  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include", ...options, headers: { "Content-Type": "application/json", "X-Admin-Name": adminName, ...(options.headers || {}) } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+  return data;
+}
+
+function AdminViewer({ user, onLogout }) {
+  const [actData, setActData] = useState(null); const [error, setError] = useState("");
+  const [asOfDate, setAsOfDate] = useState(todayIso);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [unreadFeedback, setUnreadFeedback] = useState(0);
+  const load = useCallback(() => {
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    fetch(`${base}/docs/sections_master.json`).then((r) => { if (!r.ok) throw new Error(`Unable to load the Act (${r.status})`); return r.json(); }).then(setActData).catch((err) => setError(err.message));
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => {
+    let active = true;
+    const refreshUnread = () => api("/api/admin/feedback?limit=500").then((data) => {
+      if (active) setUnreadFeedback(data.unread || 0);
+    }).catch(() => {});
+    refreshUnread();
+    const timer = window.setInterval(refreshUnread, 5000);
+    const refreshWhenVisible = () => { if (document.visibilityState === "visible") refreshUnread(); };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshUnread);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshUnread);
+    };
+  }, []);
+  if (error) return <div className="p-8 text-red-700">{error}</div>;
+  if (!actData) return <div className="grid h-screen place-items-center text-slate-500">Loading Act content…</div>;
+  return <div className="min-h-screen bg-slate-50">
+    <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 bg-blue-950 px-4 text-white shadow-md sm:h-16 sm:px-6">
+      <h1 className="min-w-0 truncate text-sm font-bold tracking-wide sm:text-lg"><span className="sm:hidden">Admin</span><span className="hidden sm:inline">{actData.act_title || "THE COMPANIES ACT, 2013"}</span></h1>
+      <div className="flex shrink-0 items-center gap-1.5 text-xs sm:gap-2"><span className="hidden items-center gap-1 md:flex"><ShieldCheck size={15}/>{user.username}</span><button aria-label="Open inbox" onClick={() => setInboxOpen(true)} className="relative inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><Inbox size={16}/><span className="hidden sm:inline">Inbox</span>{unreadFeedback > 0 && <span className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white sm:static">{unreadFeedback}</span>}</button><button aria-label="Open edit history" onClick={() => setHistoryOpen(true)} className="inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><History size={16}/><span className="hidden sm:inline">History</span></button><button aria-label="Logout" onClick={onLogout} className="inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><LogOut size={16}/><span className="hidden sm:inline">Logout</span></button></div>
+    </header>
+    <section className="hidden border-b border-slate-200 bg-white px-4 py-2 shadow-sm md:block md:px-6"><div className="mx-auto flex max-w-7xl items-center gap-3"><label className="shrink-0 text-xs font-bold uppercase tracking-wide text-blue-950">Act as on</label><input type="range" min={dateToDay(ACT_START_DATE)} max={dateToDay(todayIso())} value={dateToDay(asOfDate)} onChange={(e) => setAsOfDate(dayToDate(e.target.value))} className="min-w-0 flex-1 accent-blue-900"/><DatePicker min={ACT_START_DATE} max={todayIso()} value={asOfDate} onChange={(value) => value && setAsOfDate(value)} className="w-[9.6rem] shrink-0 sm:w-44" inputClassName="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-700 sm:text-sm" ariaLabel="Choose Act date"/></div></section>
+    <ActViewer data={actData} asOfDate={asOfDate} adminMode userName={user.username} onLogout={onLogout}/>
+    {historyOpen && <AdminHistory username={user.username} onClose={() => setHistoryOpen(false)}/>} 
+    {inboxOpen && <AdminInbox adminName={user.username} onClose={() => setInboxOpen(false)} onChanged={setUnreadFeedback}/>} 
+  </div>;
+}
+
+function AdminHistory({ username, onClose }) {
+  const [items, setItems] = useState([]), [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState(""), [field, setField] = useState(""), [section, setSection] = useState("");
+  const [from, setFrom] = useState(""), [to, setTo] = useState(""), [message, setMessage] = useState("");
+  const load = () => api("/api/admin/history").then((data) => { setItems(data.results); setSelected((s) => data.results.find((x) => x.id === s?.id) || data.results[0] || null); });
+  useEffect(() => { load(); }, []);
+  const filtered = items.filter((x) => { const hay = `${x.section_number} ${x.label} ${x.provision_id} ${JSON.stringify(x.old_value)} ${JSON.stringify(x.new_value)}`.toLowerCase(), day = x.created_at.slice(0, 10); return (!search || hay.includes(search.toLowerCase())) && (!field || (field === "callout" ? x.field_name.startsWith("callout_") : field === "context_reference" ? x.field_name.startsWith("context_reference_") : x.field_name === field)) && (!section || String(x.section_number) === section) && (!from || day >= from) && (!to || day <= to); });
+  useEffect(() => {
+    setSelected((current) => filtered.find((item) => item.id === current?.id) || filtered[0] || null);
+    setMessage("");
+  }, [search, field, section, from, to, items]);
+  const act = async (kind) => { try { const path = selected.revision_kind === "callout" ? `/api/admin/callout-revisions/${String(selected.id).replace("callout-", "")}/${kind}` : selected.revision_kind === "context_reference" ? `/api/admin/context-reference-revisions/${String(selected.id).replace("context-", "")}/${kind}` : `/api/admin/revisions/${selected.id}/${kind}`; await api(path, { method: "POST" }); setMessage(kind === "undo" ? "Revision undone." : "Revision restored."); await load(); } catch (error) { setMessage(error.message); } };
+  const printable = (value) => typeof value === "object" && value !== null ? JSON.stringify(value, null, 2) : String(value ?? "");
+  const oldLines = printable(selected?.old_value).split("\n"), newLines = printable(selected?.new_value).split("\n");
+  return <div className="fixed inset-0 z-[70] flex bg-slate-950/60 p-3 backdrop-blur-sm"><section className="m-auto flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+    <header className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="font-bold">Edit history</h2><p className="text-xs text-slate-500">Changes made by {username}</p></div><button onClick={onClose} className="grid size-9 place-items-center rounded hover:bg-slate-100"><X size={19}/></button></header>
+    <div className="grid grid-cols-2 gap-2 border-b bg-slate-50 p-3 md:grid-cols-6"><input placeholder="Search changes…" value={search} onChange={(e) => setSearch(e.target.value)} className="rounded border px-2 py-1.5 text-xs"/><input placeholder="Section" value={section} onChange={(e) => setSection(e.target.value)} className="rounded border px-2 py-1.5 text-xs"/><select value={field} onChange={(e) => setField(e.target.value)} className="rounded border px-2 py-1.5 text-xs"><option value="">All fields</option><option value="current_text">Text</option><option value="title">Title</option><option value="status">Status</option><option value="callout">Callouts and bulb notes</option><option value="context_reference">Hover popups</option></select><DatePicker value={from} onChange={setFrom} allowEmpty inputClassName="rounded border px-2 py-1.5 text-xs" ariaLabel="Filter from date"/><DatePicker value={to} onChange={setTo} allowEmpty inputClassName="rounded border px-2 py-1.5 text-xs" ariaLabel="Filter until date"/><button type="button" onClick={() => { setSearch(""); setSection(""); setField(""); setFrom(""); setTo(""); }} disabled={!search && !section && !field && !from && !to} className="rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40">Clear filters</button></div>
+    <div className="grid min-h-0 flex-1 md:grid-cols-[20rem_1fr]"><aside className="overflow-y-auto border-r bg-slate-50">{filtered.length ? filtered.map((x) => <button key={x.id} onClick={() => { setSelected(x); setMessage(""); }} className={`block w-full border-b px-4 py-3 text-left ${selected?.id === x.id ? "bg-blue-50" : "hover:bg-white"}`}><strong className="block text-sm">Section {x.section_number} · {x.label}</strong><span className="block text-xs text-slate-500">{x.field_name.replace("_", " ")} · {new Date(x.created_at).toLocaleString()}</span><span className="text-[11px] text-blue-700">effective {x.effective_date || "all dates"}</span></button>) : <p className="p-5 text-sm text-slate-500">No matching edits.</p>}</aside>
+      <main className="min-w-0 overflow-auto bg-slate-950 p-4 font-mono text-xs text-slate-200">{selected && <><div className="mb-3 border-b border-slate-700 pb-3 text-slate-400"><div className="mb-2 flex gap-2"><button disabled={selected.undone_by_revision_id || selected.reverts_revision_id} onClick={() => act("undo")} className="rounded bg-amber-600 px-3 py-1.5 font-sans font-bold text-white disabled:opacity-40">Undo this change</button><button disabled={!selected.undone_by_revision_id || selected.reverts_revision_id} onClick={() => act("redo")} className="rounded bg-emerald-700 px-3 py-1.5 font-sans font-bold text-white disabled:opacity-40">Redo this change</button></div>{message && <div className="mb-2 text-cyan-300">{message}</div>}<div className="text-amber-300">revision {selected.id}</div><div>--- {selected.provision_id}@before</div><div>+++ {selected.provision_id}@{selected.effective_date || "current"}</div></div>{oldLines.map((line, i) => line !== newLines[i] && <div key={`o${i}`} className="whitespace-pre-wrap bg-red-950 px-2 py-0.5 text-red-200">- {line || " "}</div>)}{newLines.map((line, i) => line !== oldLines[i] && <div key={`n${i}`} className="whitespace-pre-wrap bg-emerald-950 px-2 py-0.5 text-emerald-200">+ {line || " "}</div>)}</>}</main>
+    </div></section></div>;
+}
+
+export default function AdminApp() {
+  const [user, setUser] = useState(undefined);
+  useEffect(() => {
+    const remembered = getRememberedUser().trim().toLowerCase();
+    api("/api/admin/me").then(setUser).catch(async () => {
+      if (remembered !== "arv@momo" && remembered !== "nak@momo") {
+        window.location.replace("/");
+        return;
+      }
+      try {
+        setUser(await api("/api/admin/login", { method: "POST", body: JSON.stringify({ username: remembered }) }));
+        window.history.replaceState({}, "", "/admin");
+      } catch {
+        window.location.replace("/");
+      }
+    });
+  }, []);
+  if (user === undefined) return <main className="admin-login-shell"><div className="admin-muted">Checking session…</div></main>;
+  return <AdminViewer user={user} onLogout={async () => {
+    window.CompaniesActNative?.setAdminName("");
+    await api("/api/admin/logout", { method: "POST" }).catch(() => {});
+    forgetUser();
+    window.location.replace("/");
+  }}/>;
+}

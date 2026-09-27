@@ -6,9 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:mobile": "VITE_API_BASE_URL=https://companiesact.site VITE_MOBILE_APP=true vite build",
+    "cap:sync": "npm run build:mobile && cap sync android",
+    "android:apk": "npm run cap:sync && cd android && ./gradlew assembleDebug",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
     "@tailwindcss/vite": "^4.0.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",

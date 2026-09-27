@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Companies Act 2013</string>
+    <string name="title_activity_main">Companies Act 2013</string>
+    <string name="package_name">site.companiesact.app</string>
+    <string name="custom_url_scheme">site.companiesact.app</string>
+    <string name="update_channel_name">App updates</string>
+    <string name="update_channel_description">Notifications when a new Companies Act app version is available</string>
+</resources>
