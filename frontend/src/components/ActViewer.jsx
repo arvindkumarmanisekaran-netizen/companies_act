@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { prefetchSectionTimeline, SectionCard } from "./SectionViewer";
 import AdminInbox from "./AdminInbox";
+import { captureEvent } from "../analytics";
 
 const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 const isMobileApp = import.meta.env.VITE_MOBILE_APP === "true";
@@ -113,6 +114,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
   const suppressSwipeClickRef = useRef(false);
   const suppressSwipeClickTimerRef = useRef(null);
   const preserveBrowseContextRef = useRef(false);
+  const trackedSectionRef = useRef(null);
   const rawChapters = data?.chapters || [];
 
   const chapters = useMemo(() => {
@@ -267,6 +269,16 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
   );
 
   useEffect(() => {
+    if (adminMode || !selectedEntry || trackedSectionRef.current === selectedEntry.key) return;
+    trackedSectionRef.current = selectedEntry.key;
+    captureEvent("section_opened", {
+      chapter_number: selectedEntry.chapter.chapter_number,
+      section_number: selectedEntry.section.section_number,
+      as_of_date: asOfDate,
+    });
+  }, [adminMode, asOfDate, selectedEntry?.key]);
+
+  useEffect(() => {
     if (!selectedEntry || adminMode) return;
     for (let distance = 1; distance <= 5; distance += 1) {
       [swipeSelectedIndex - distance, swipeSelectedIndex + distance].forEach((index) => {
@@ -417,7 +429,12 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
 
   const runNavigationSearch = async (value) => {
     const query = String(value || "").trim();
-    if (!query || jumpToSection(query)) return;
+    if (!query) return;
+    captureEvent("search_submitted", { query });
+    if (jumpToSection(query)) {
+      captureEvent("search_result_selected", { query, section_number: query.replace(/^section\s+/i, ""), selection_type: "direct" });
+      return;
+    }
 
     let matches = navigationResultQuery === query.toLowerCase() ? navigationResults : [];
     if (!matches.length) {
@@ -437,8 +454,12 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
       }
     }
 
+    captureEvent("search_completed", { query, result_count: matches.length });
     const destination = matches[0];
-    if (destination) jumpToSection(destination.section_number, destination.provision_id);
+    if (destination) {
+      captureEvent("search_result_selected", { query, section_number: destination.section_number, selection_type: "first_result" });
+      jumpToSection(destination.section_number, destination.provision_id);
+    }
   };
 
   const shareApp = async () => {
@@ -487,6 +508,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
         throw new Error(payload.detail || "Could not send feedback");
       }
       setFeedbackText("");
+      captureEvent("feedback_submitted", { section_number: selectedEntry?.section?.section_number || null });
       setFeedbackToast({ type: "success", message: "Feedback sent to both administrators." });
     } catch (error) {
       setFeedbackToast({ type: "error", message: error.message || "Could not send feedback. Please try again." });
@@ -587,7 +609,14 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
                   key={`${result.match_type}-${result.section_number}`}
                   type="button"
                   role="option"
-                  onClick={() => jumpToSection(result.section_number, result.provision_id)}
+                  onClick={() => {
+                    captureEvent("search_result_selected", {
+                      query: searchTerm.trim(),
+                      section_number: result.section_number,
+                      selection_type: "suggestion",
+                    });
+                    jumpToSection(result.section_number, result.provision_id);
+                  }}
                   className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-blue-50"
                 >
                   <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-950 text-xs font-extrabold text-white">{result.section_number}</span>

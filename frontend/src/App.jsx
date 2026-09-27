@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import ActViewer from "./components/ActViewer";
 import AdminApp from "./AdminApp";
 import { forgetUser, getRememberedUser, rememberUser } from "./userSession";
+import { captureEvent, resetAnalytics, setReaderName } from "./analytics";
 
 const ADMIN_NAMES = new Set(["arv@momo", "nak@momo"]);
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -11,7 +12,7 @@ function UserLogin({ onLogin }) {
   return <main className="admin-login-shell"><section className="admin-login-card">
     <div className="admin-mark">CA</div><p className="admin-eyebrow">Companies Act, 2013</p>
     <h1>Welcome</h1><p className="admin-muted">Enter your name to continue. No password is required.</p>
-    <form onSubmit={(event) => { event.preventDefault(); const saved = rememberUser(name); if (saved) onLogin(saved); }} className="admin-form">
+    <form onSubmit={(event) => { event.preventDefault(); const saved = rememberUser(name); if (saved) { setReaderName(saved); captureEvent("reader_signed_in"); onLogin(saved); } }} className="admin-form">
       <label>Your name<input autoFocus autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100}/></label>
       <button className="admin-primary">Continue</button>
     </form>
@@ -147,11 +148,13 @@ function App() {
   const isAdmin = adminPath || ADMIN_NAMES.has(userName.trim().toLowerCase());
   useEffect(() => {
     const normalized = userName.trim().toLowerCase();
+    setReaderName(userName);
+    if (userName) captureEvent("$pageview", { area: isAdmin ? "admin" : "reader" });
     window.CompaniesActNative?.setAdminName(ADMIN_NAMES.has(normalized) ? normalized : "");
-  }, [userName]);
+  }, [userName, isAdmin]);
   if (isAdmin) return <AdminApp />;
   if (!userName) return <UserLogin onLogin={setUserName}/>;
-  return <PublicApp userName={userName} onLogout={() => { forgetUser(); setUserName(""); }}/>
+  return <PublicApp userName={userName} onLogout={() => { captureEvent("reader_signed_out"); forgetUser(); resetAnalytics(); setUserName(""); }}/>
 }
 
 export default App;
