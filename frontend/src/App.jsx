@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import ActViewer from "./components/ActViewer";
 import AdminApp from "./AdminApp";
 import { forgetUser, getRememberedUser, rememberUser } from "./userSession";
-import { captureEvent, resetAnalytics, setReaderName } from "./analytics";
+import { captureEvent, resetAnalytics, setReaderName, startActiveTimeTracking } from "./analytics";
 
 const ADMIN_NAMES = new Set(["arv@momo", "nak@momo"]);
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -24,6 +24,8 @@ function PublicApp({ userName, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const asOfDate = todayIso();
+
+  useEffect(() => startActiveTimeTracking(), []);
 
   const fetchActData = useCallback(() => {
     setLoading(true);

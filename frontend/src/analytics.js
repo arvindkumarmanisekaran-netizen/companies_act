@@ -33,3 +33,44 @@ export function resetAnalytics() {
 export function captureEvent(name, properties = {}) {
   if (enabled) posthog.capture(name, properties);
 }
+
+export function startActiveTimeTracking() {
+  if (!enabled || typeof document === "undefined") return () => {};
+
+  let visible = document.visibilityState === "visible";
+  let activeSeconds = 0;
+  let lastActivity = Date.now();
+
+  const markActivity = () => {
+    lastActivity = Date.now();
+  };
+
+  const flush = () => {
+    if (!visible || Date.now() - lastActivity > 30_000) return;
+    activeSeconds += 10;
+    posthog.capture("reader_active", { active_seconds: 10, total_active_seconds: activeSeconds });
+  };
+
+  const handleVisibility = () => {
+    if (document.visibilityState === "hidden") {
+      if (visible) posthog.capture("$pageleave", { active_seconds: activeSeconds });
+      visible = false;
+      return;
+    }
+    visible = true;
+    markActivity();
+    posthog.capture("$pageview", { area: "reader_resume" });
+  };
+
+  const interval = window.setInterval(flush, 10_000);
+  const activityEvents = ["pointerdown", "keydown", "scroll", "touchstart"];
+  activityEvents.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
+  document.addEventListener("visibilitychange", handleVisibility);
+
+  return () => {
+    window.clearInterval(interval);
+    activityEvents.forEach((eventName) => window.removeEventListener(eventName, markActivity));
+    document.removeEventListener("visibilitychange", handleVisibility);
+    if (visible) posthog.capture("$pageleave", { active_seconds: activeSeconds });
+  };
+}
