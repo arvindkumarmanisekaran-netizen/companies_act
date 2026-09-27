@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import ActViewer from "./components/ActViewer";
 import TimelineControls from "./components/TimelineControls";
+import AdminApp from "./AdminApp";
+import { forgetUser, getRememberedUser, rememberUser } from "./userSession";
 
 const apiJson = async (url, signal) => {
   const response = await fetch(url, {
@@ -14,7 +16,21 @@ const apiJson = async (url, signal) => {
   return response.json();
 };
 
-function App() {
+const ADMIN_NAMES = new Set(["arv@momo", "nak@momo"]);
+
+function UserLogin({ onLogin }) {
+  const [name, setName] = useState("");
+  return <main className="admin-login-shell"><section className="admin-login-card">
+    <div className="admin-mark">CA</div><p className="admin-eyebrow">Companies Act, 2013</p>
+    <h1>Welcome</h1><p className="admin-muted">Enter your name to continue. No password is required.</p>
+    <form onSubmit={(event) => { event.preventDefault(); const saved = rememberUser(name); if (saved) onLogin(saved); }} className="admin-form">
+      <label>Your name<input autoFocus autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100}/></label>
+      <button className="admin-primary">Continue</button>
+    </form>
+  </section></main>;
+}
+
+function PublicApp({ userName, onLogout }) {
   const [meta, setMeta] = useState(null);
   const [selectedDate, setSelectedDate] = useState("");
   const [actData, setActData] = useState(null);
@@ -159,7 +175,9 @@ function App() {
         <h1 className="min-w-0 truncate text-sm font-bold tracking-wide sm:text-lg">
           {actData?.act_title || "THE COMPANIES ACT, 2013"}
         </h1>
-        <div className="hidden shrink-0 items-center gap-3 sm:flex">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <span className="max-w-40 truncate text-xs font-semibold text-blue-100">{userName}</span>
+          <button type="button" onClick={onLogout} className="rounded border border-blue-700 px-2.5 py-1 text-xs font-bold hover:bg-blue-900">Logout</button>
           <span className="rounded border border-blue-700 bg-blue-900 px-2.5 py-1 font-mono text-xs">
             DATABASE · HISTORICAL VIEW
           </span>
@@ -189,10 +207,23 @@ function App() {
       )}
 
       <main className={loading ? "opacity-80 transition-opacity" : "transition-opacity"}>
-        <ActViewer data={actData} onSectionChange={setActiveSectionNumber} />
+        <ActViewer data={actData} asOfDate={selectedDate} userName={userName} onLogout={onLogout} onSectionChange={setActiveSectionNumber} />
       </main>
     </div>
   );
+}
+
+function App() {
+  const [userName, setUserName] = useState(getRememberedUser);
+  const adminPath = window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/");
+  const isAdmin = adminPath || ADMIN_NAMES.has(userName.trim().toLowerCase());
+  useEffect(() => {
+    const normalized = userName.trim().toLowerCase();
+    window.CompaniesActNative?.setAdminName(ADMIN_NAMES.has(normalized) ? normalized : "");
+  }, [userName]);
+  if (isAdmin) return <AdminApp />;
+  if (!userName) return <UserLogin onLogin={setUserName}/>;
+  return <PublicApp userName={userName} onLogout={() => { forgetUser(); setUserName(""); }}/>
 }
 
 export default App;

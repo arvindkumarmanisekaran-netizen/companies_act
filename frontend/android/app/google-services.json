@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1063773418453",
+    "project_id": "pfizeraws",
+    "storage_bucket": "pfizeraws.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1063773418453:android:03afe82cd5b1dec316c35c",
+        "android_client_info": {
+          "package_name": "site.companiesact.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtjxa_9mMN5HCJOafc7PKMjNNfKYk7oeo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
