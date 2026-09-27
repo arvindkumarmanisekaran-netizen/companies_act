@@ -151,7 +151,6 @@ function App() {
   useEffect(() => {
     const normalized = userName.trim().toLowerCase();
     setReaderName(userName);
-    if (userName) captureEvent("$pageview", { area: isAdmin ? "admin" : "reader" });
     window.CompaniesActNative?.setAdminName(ADMIN_NAMES.has(normalized) ? normalized : "");
   }, [userName, isAdmin]);
   if (isAdmin) return <AdminApp />;

@@ -9,8 +9,8 @@ export function initAnalytics() {
   if (!enabled) return;
   posthog.init(projectToken, {
     api_host: apiHost,
-    autocapture: false,
-    capture_pageview: false,
+    autocapture: true,
+    capture_pageview: true,
     person_profiles: "identified_only",
     disable_session_recording: true,
   });
@@ -59,7 +59,6 @@ export function startActiveTimeTracking() {
     }
     visible = true;
     markActivity();
-    posthog.capture("$pageview", { area: "reader_resume" });
   };
 
   const interval = window.setInterval(flush, 10_000);
