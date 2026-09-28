@@ -1454,7 +1454,7 @@ export const SubsectionRenderer = ({ subsection, historical = false, historicalV
           <span className="font-bold text-gray-700">{subsection.subsection_number}</span>
         )}
         {subsection.text && (editing && subsection._provisionId ? (
-          <textarea value={draftTexts[subsection._provisionId] ?? subsection.text} onChange={(event) => onTextChange(subsection._provisionId, event.target.value)} className="min-h-24 flex-1 rounded-lg border border-blue-300 p-2 text-[15px] leading-7 text-gray-900 outline-none ring-2 ring-blue-100 sm:text-base"/>
+          <RichTextEditor value={draftTexts[subsection._provisionId] ?? subsection.text} onChange={(value) => onTextChange(subsection._provisionId, value)} className="min-h-24 flex-1"/>
         ) : earlierVersion?.text ? (
           <CoalescedAmendment currentText={subsection.text} earlier={earlierVersion} onOpenAmendment={onOpenAmendment} glossary={glossary} provisionId={subsection._provisionId} callouts={subsection.callouts} onOpenBulb={setActiveBulb} adminMode={adminMode}/>
         ) : (
@@ -1478,7 +1478,7 @@ export const SubsectionRenderer = ({ subsection, historical = false, historicalV
                     <span className="min-w-8 shrink-0 font-semibold text-blue-700">
                       {clause.clause_number}
                     </span>
-                    {editing && clause._provisionId ? <textarea value={draftTexts[clause._provisionId] ?? clause.text} onChange={(event) => onTextChange(clause._provisionId, event.target.value)} className="min-h-20 flex-1 rounded-lg border border-blue-300 p-2 outline-none ring-2 ring-blue-100"/> : group.historical[0]?.text && index === 0 ? <CoalescedAmendment currentText={clause.text} earlier={group.historical[0]} onOpenAmendment={onOpenAmendment} glossary={glossary} provisionId={clause._provisionId} callouts={clause.callouts} onOpenBulb={setActiveBulb} adminMode={adminMode}/> : <AnchoredText text={clause.text} callouts={clause.callouts} provisionId={clause._provisionId} adminMode={adminMode} onOpenBulb={setActiveBulb} className="min-w-0 flex-1" glossary={glossary}/>} 
+                    {editing && clause._provisionId ? <RichTextEditor value={draftTexts[clause._provisionId] ?? clause.text} onChange={(value) => onTextChange(clause._provisionId, value)} className="min-h-20 min-w-0 flex-1"/> : group.historical[0]?.text && index === 0 ? <CoalescedAmendment currentText={clause.text} earlier={group.historical[0]} onOpenAmendment={onOpenAmendment} glossary={glossary} provisionId={clause._provisionId} callouts={clause.callouts} onOpenBulb={setActiveBulb} adminMode={adminMode}/> : <AnchoredText text={clause.text} callouts={clause.callouts} provisionId={clause._provisionId} adminMode={adminMode} onOpenBulb={setActiveBulb} className="min-w-0 flex-1" glossary={glossary}/>} 
                   </div>
                   <CalloutList callouts={clause.callouts} provisionId={clause._provisionId} adminMode={adminMode} allowCreate={false} onChanged={onCalloutsChanged} glossary={glossary} asOfDate={asOfDate}/>
                 </div>
@@ -1578,13 +1578,9 @@ export const SectionCard = ({
     try {
       const nodes = [timelineData?.section, ...flattenNodes(timelineData?.provisions || [])].filter(Boolean);
       const byId = new Map(nodes.map((node) => [node.id, node]));
-      const parsed = parseSource(adminDraft);
-      if (parsed.title !== undefined && parsed.title !== (timelineData?.section?.title || section.title || "")) {
-        await adminRequest(`/api/admin/provisions/${encodeURIComponent(timelineData.section.id)}`, { method: "PATCH", body: JSON.stringify({ field: "title", value: parsed.title, as_of: asOfDate }) });
-      }
-      for (const item of parsed.items) {
-        const node = byId.get(item.id);
-        if (item.text !== (node?.current_text || "")) await adminRequest(`/api/admin/provisions/${encodeURIComponent(item.id)}`, { method: "PATCH", body: JSON.stringify({ field: "current_text", value: item.text, as_of: asOfDate }) });
+      for (const [id, text] of Object.entries(adminChanges)) {
+        const node = byId.get(id);
+        if (node && text !== (node.current_text || "")) await adminRequest(`/api/admin/provisions/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ field: "current_text", value: text, as_of: asOfDate }) });
       }
       const cleanup = await adminRequest("/api/admin/relationships/deduplicate", { method: "POST", body: JSON.stringify({ provision_id: timelineData.section.id }) });
       setAdminEditing(false); setAdminChanges({}); setAdminMessage(cleanup.removed ? `Saved. Removed ${cleanup.removed} duplicate document reference${cleanup.removed === 1 ? "" : "s"}.` : "Saved."); setTimelineRefresh((value) => value + 1);
@@ -1843,7 +1839,7 @@ export const SectionCard = ({
         <div key={workspaceTab} className="workspace-scene">
         {workspaceTab === "Act" && adminMode && <div className="mb-4 flex flex-wrap items-center gap-2 border-y border-slate-200 py-2">
           <button type="button" disabled={adminEditing || adminBusy || !adminRecord} onClick={() => { setAdminDraft(buildSource()); setAdminEditing(true); }} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"><Pencil size={14}/>Edit</button>
-          <button type="button" disabled={!adminEditing || adminBusy || !adminDraft.trim()} onClick={saveAdminText} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"><Save size={14}/>Save</button>
+          <button type="button" disabled={!adminEditing || adminBusy} onClick={saveAdminText} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"><Save size={14}/>Save</button>
           <button type="button" disabled={adminEditing || adminBusy || !adminRevision} onClick={undoAdminText} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 disabled:opacity-40"><Undo2 size={14}/>Undo</button>
           <button type="button" disabled={!adminEditing || adminBusy} onClick={() => { setAdminChanges({}); setAdminEditing(false); setAdminMessage(""); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-40"><X size={14}/>Cancel</button>
           {adminMessage && <span className="text-xs font-semibold text-blue-800">{adminMessage}</span>}
@@ -1852,8 +1848,6 @@ export const SectionCard = ({
         {workspaceTab === "Act" && <>
         {adminMode && !adminEditing && <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3"><button type="button" draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("application/x-companies-bulb", "bulb"); }} className="grid size-5 cursor-grab place-items-center rounded-full border border-amber-400 bg-amber-100 text-amber-700 shadow-sm active:cursor-grabbing" title="Drag into the section"><Lightbulb size={12}/></button><div><strong className="block text-sm text-amber-950">Drag a bulb into the section</strong><span className="text-xs text-amber-800">Drop it at the point where additional information belongs.</span></div></div>}
         <CalloutList callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onChanged={() => setTimelineRefresh((value) => value + 1)} glossary={glossary} asOfDate={asOfDate}/>
-        {adminMode && adminEditing ? <textarea value={adminDraft} onChange={(event) => setAdminDraft(event.target.value)} className="mb-6 h-[70vh] min-h-[28rem] w-full resize-y overflow-y-scroll rounded-xl border border-blue-300 bg-slate-950 p-4 pb-10 font-mono text-sm leading-6 text-slate-100 outline-none ring-2 ring-blue-100" spellCheck="false"/> : <>
-
         {subsectionGroups.length > 0 ? (
           subsectionGroups.map((group, groupIndex) => (
             <div key={`subsection-group-${normalizeIdentifier(group.identifier)}-${groupIndex}`}>
@@ -1880,7 +1874,7 @@ export const SectionCard = ({
           <p className="text-[15px] leading-7 text-gray-900 sm:text-base"><AnchoredText text={timelineData?.section?.current_text || ""} callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></p>
         )}
         {subsectionGroups.length > 0 && <div className="mt-4 border-t border-slate-200 pt-3"><AnchoredText text="" callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></div>}
-        </>}</>}
+        </>}
         {categorizedDocuments[workspaceTab] && <DocumentCategoryPanel relationships={categorizedDocuments[workspaceTab]} label={workspaceTab} onOpen={setActiveDocuments}/>}
         {workspaceTab === "Actionable Insights" && (insightCallouts.length > 0 ? (
           <CalloutList callouts={insightCallouts} provisionId={timelineData?.section?.id} adminMode={adminMode} onChanged={() => setTimelineRefresh((value) => value + 1)} glossary={glossary} asOfDate={asOfDate}/>
