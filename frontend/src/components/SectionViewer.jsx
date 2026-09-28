@@ -795,7 +795,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const [showAddReference, setShowAddReference] = useState(false);
   const relationship = relationships?.[activeIndex];
   const document = relationship?.document;
-  const isNotification = /notification/i.test(String(document?.instrument_type || ""));
+  const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
   const pdfUrl = document?.id
     ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf`
     : "";
@@ -1305,7 +1305,7 @@ const AnchoredText = ({ text = "", callouts = [], provisionId, adminMode, onOpen
 
 const DocumentCategoryPanel = ({ relationships, label, onOpen }) => {
   if (!relationships.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center"><FileText className="mx-auto mb-3 text-slate-400"/><h4 className="font-bold text-slate-800">No {label.toLowerCase()} linked to this section</h4><p className="mt-1 text-sm text-slate-500">Documents will appear here when they are added as related references.</p></div>;
-  return <div className="grid gap-3">{relationships.map((relationship) => <button key={relationship.relationship_id} type="button" onClick={() => onOpen({ relationships, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id })} className="document-card rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-300 hover:bg-blue-50"><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{relationship.document.instrument_type || "Document"}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>)}</div>;
+  return <div className="grid gap-3">{relationships.map((relationship) => <button key={relationship.relationship_id} type="button" onClick={() => onOpen({ relationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id })} className="document-card rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-300 hover:bg-blue-50"><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{relationship.document.instrument_type || "Document"}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>)}</div>;
 };
 
 const normalizeIdentifier = (value) =>
