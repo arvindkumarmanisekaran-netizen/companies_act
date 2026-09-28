@@ -404,14 +404,13 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
       if (selectedEntry) setSelectedSectionKey(selectedEntry.key);
     } else {
       const chapter = chapters.find((item) => String(item.chapter_number || "").trim().toUpperCase() === normalizedChapter);
-      const rememberedKey = lastSectionByChapterRef.current.get(normalizedChapter);
-      const rememberedEntry = chapter?.sections?.some((item, index) => sectionKey(chapter, item, index) === rememberedKey);
-      const nextSection = rememberedEntry ? rememberedKey : chapter?.sections?.length ? sectionKey(chapter, chapter.sections[0], 0) : null;
+      const nextSection = chapter?.sections?.length ? sectionKey(chapter, chapter.sections[0], 0) : null;
       if (nextSection) {
         lastSectionByChapterRef.current.set(normalizedChapter, nextSection);
         setSelectedSectionKey(nextSection);
         const nextSectionNumber = chapter.sections.find((item, index) => sectionKey(chapter, item, index) === nextSection)?.section_number;
         if (nextSectionNumber) window.history.replaceState({}, "", `#section-${encodeURIComponent(nextSectionNumber)}`);
+        requestAnimationFrame(scrollReaderToTop);
       } else setSelectedSectionKey(null);
     }
     captureEvent("chapter_selected", { chapter_number: chapterNumber || "all" });
