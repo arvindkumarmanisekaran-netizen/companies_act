@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
+  Bold,
   FilePenLine,
   FileText,
   Lightbulb,
@@ -10,12 +11,16 @@ import {
   ListChecks,
   LoaderCircle,
   MessageSquareText,
+  Highlighter,
+  Italic,
   Minus,
   Pencil,
   Plus,
   Save,
   Scale,
+  Strikethrough,
   StickyNote,
+  Underline,
   Undo2,
   X,
 } from "lucide-react";
@@ -745,26 +750,28 @@ const cleanCorpusText = (value) => {
   return text;
 };
 
-const DOCUMENT_FORMATS = [
-  ["bold", "B"], ["italic", "I"], ["underline", "U"], ["strike", "S"],
-  ["highlight-red", "Red"], ["highlight-green", "Green"], ["highlight-yellow", "Yellow"],
-];
+const DOCUMENT_FORMATS = [["bold", Bold], ["italic", Italic], ["underline", Underline], ["strike", Strikethrough]];
 const applyDocumentFormat = (value, start, end, format) => {
   if (start === end) return value;
   const open = `[[${format}]]`; const close = `[[/${format}]]`;
   return `${value.slice(0, start)}${open}${value.slice(start, end)}${close}${value.slice(end)}`;
 };
-const RichTextToolbar = ({ onFormat }) => <div className="flex flex-wrap gap-1 border-b border-blue-200 bg-blue-50 p-2">
-  {DOCUMENT_FORMATS.map(([format, label]) => <button key={format} type="button" onMouseDown={(event) => { event.preventDefault(); onFormat(format); }} className="rounded border border-blue-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-blue-100">{label}</button>)}
+const RichTextToolbar = ({ onFormat, onColor }) => <div className="flex flex-wrap items-center gap-1 border-b border-blue-200 bg-blue-50 p-2">
+  {DOCUMENT_FORMATS.map(([format, Icon]) => <button key={format} type="button" title={format} aria-label={format} onMouseDown={(event) => { event.preventDefault(); onFormat(format); }} className="grid size-8 place-items-center rounded border border-blue-200 bg-white text-slate-700 hover:bg-blue-100"><Icon size={15}/></button>)}
+  <span className="mx-1 h-6 w-px bg-blue-200" />
+  <label title="Highlight color" className="grid size-8 cursor-pointer place-items-center rounded border border-blue-200 bg-white text-slate-700 hover:bg-blue-100"><Highlighter size={15}/><input type="color" defaultValue="#fff59d" onChange={(event) => onColor(event.target.value)} className="sr-only" /></label>
 </div>;
 const RichTextEditor = ({ value, onChange, className = "" }) => {
   const ref = useRef(null);
-  const format = (name) => { const element = ref.current; if (!element) return; const start = element.selectionStart; const end = element.selectionEnd; if (start === end) return; onChange(applyDocumentFormat(value, start, end, name)); requestAnimationFrame(() => { element.focus(); element.setSelectionRange(start + name.length + 4, end + name.length + 4); }); };
-  return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format}/><textarea ref={ref} value={value} onChange={(event) => onChange(event.target.value)} className="min-h-0 h-full w-full resize-y border-0 p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
+  const selection = useRef({ start: 0, end: 0 });
+  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; onChange(applyDocumentFormat(value, start, end, name)); requestAnimationFrame(() => { element.focus(); element.setSelectionRange(start + name.length + 4, end + name.length + 4); }); };
+  const color = (hex) => format(`highlight-${hex.replace("#", "")}`);
+  const rememberSelection = () => { if (ref.current) selection.current = { start: ref.current.selectionStart, end: ref.current.selectionEnd }; };
+  return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><textarea ref={ref} value={value} onChange={(event) => onChange(event.target.value)} onSelect={rememberSelection} onMouseUp={rememberSelection} onKeyUp={rememberSelection} className="min-h-0 h-full w-full resize-y border-0 p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
 };
 const FormattedDocumentText = ({ text }) => {
-  const parts = String(text || "").split(/(\[\[(?:bold|italic|underline|strike|highlight-(?:red|green|yellow))\]\].*?\[\[\/(?:bold|italic|underline|strike|highlight-(?:red|green|yellow))\]\])/gs);
-  return <>{parts.map((part, index) => { const match = part.match(/^\[\[(bold|italic|underline|strike|highlight-(?:red|green|yellow))\]\]([\s\S]*?)\[\[\/\1\]\]$/); if (!match) return <React.Fragment key={index}>{part}</React.Fragment>; const styles = { bold: "font-bold", italic: "italic", underline: "underline", strike: "line-through", "highlight-red": "bg-red-200", "highlight-green": "bg-green-200", "highlight-yellow": "bg-yellow-200" }; return <span key={index} className={styles[match[1]]}>{match[2]}</span>; })}</>;
+  const parts = String(text || "").split(/(\[\[(?:bold|italic|underline|strike|highlight-[a-z0-9]+)\]\].*?\[\[\/(?:bold|italic|underline|strike|highlight-[a-z0-9]+)\]\])/gs);
+  return <>{parts.map((part, index) => { const match = part.match(/^\[\[(bold|italic|underline|strike|highlight-([a-z0-9]+))\]\]([\s\S]*?)\[\[\/\1\]\]$/); if (!match) return <React.Fragment key={index}>{part}</React.Fragment>; const styles = { bold: "font-bold", italic: "italic", underline: "underline", strike: "line-through" }; return <span key={index} className={styles[match[1]] || ""} style={match[2] ? { backgroundColor: `#${match[2]}` } : undefined}>{match[3]}</span>; })}</>;
 };
 
 const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged }) => {
