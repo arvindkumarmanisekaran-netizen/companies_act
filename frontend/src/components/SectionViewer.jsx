@@ -795,6 +795,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const [showAddReference, setShowAddReference] = useState(false);
   const relationship = relationships?.[activeIndex];
   const document = relationship?.document;
+  const isNotification = /notification/i.test(String(document?.instrument_type || ""));
   const pdfUrl = document?.id
     ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf`
     : "";
@@ -881,7 +882,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
             Download PDF
           </a>
         </div>
-        {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : (
+        {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
             {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : earlierDocument ? (
               <CoalescedAmendment currentText={activeDocument?.full_text || ""} earlier={{ text: earlierDocument.full_text, source_note: `${earlierDocument.title || "Earlier document"} (${earlierDocument.publication_date || "previous version"})` }} />
