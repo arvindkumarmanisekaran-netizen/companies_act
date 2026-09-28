@@ -1107,11 +1107,15 @@ const RichTextToolbar = ({ textareaRef, onChange }) => {
     const selectionStart = textarea.selectionStart ?? 0;
     const selectionEnd = textarea.selectionEnd ?? selectionStart;
     const selected = textarea.value.slice(selectionStart, selectionEnd) || "text";
-    const nextValue = `${textarea.value.slice(0, selectionStart)}${format.open}${selected}${format.close}${textarea.value.slice(selectionEnd)}`;
+    const hasFormat = textarea.value.slice(Math.max(0, selectionStart - format.open.length), selectionStart) === format.open
+      && textarea.value.slice(selectionEnd, selectionEnd + format.close.length) === format.close;
+    const nextValue = hasFormat
+      ? `${textarea.value.slice(0, selectionStart - format.open.length)}${selected}${textarea.value.slice(selectionEnd + format.close.length)}`
+      : `${textarea.value.slice(0, selectionStart)}${format.open}${selected}${format.close}${textarea.value.slice(selectionEnd)}`;
     onChange(nextValue);
     requestAnimationFrame(() => {
       textarea.focus();
-      const start = selectionStart + format.open.length;
+      const start = hasFormat ? selectionStart - format.open.length : selectionStart + format.open.length;
       textarea.setSelectionRange(start, start + selected.length);
     });
   };
