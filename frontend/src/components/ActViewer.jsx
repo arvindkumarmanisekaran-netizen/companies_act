@@ -115,6 +115,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
   const preserveBrowseContextRef = useRef(false);
   const trackedSectionRef = useRef(null);
   const lastSectionByChapterRef = useRef(new Map());
+  const sectionListRef = useRef(null);
   const rawChapters = data?.chapters || [];
 
   const chapters = useMemo(() => {
@@ -410,7 +411,10 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
         setSelectedSectionKey(nextSection);
         const nextSectionNumber = chapter.sections.find((item, index) => sectionKey(chapter, item, index) === nextSection)?.section_number;
         if (nextSectionNumber) window.history.replaceState({}, "", `#section-${encodeURIComponent(nextSectionNumber)}`);
-        requestAnimationFrame(scrollReaderToTop);
+        requestAnimationFrame(() => {
+          scrollReaderToTop();
+          sectionListRef.current?.scrollTo({ top: 0, behavior: "auto" });
+        });
       } else setSelectedSectionKey(null);
     }
     captureEvent("chapter_selected", { chapter_number: chapterNumber || "all" });
@@ -731,7 +735,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
             </span>
           </div>
 
-          <div className="min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] md:flex-[2]">
+          <div ref={sectionListRef} className="min-h-0 flex-1 touch-pan-y space-y-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch] md:flex-[2]">
             {sectionEntries.map((entry, index) => (
               <button
                 type="button"
