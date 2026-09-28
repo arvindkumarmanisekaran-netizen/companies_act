@@ -761,6 +761,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const [activeIndex, setActiveIndex] = useState(0);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [documentData, setDocumentData] = useState(null);
   const [message, setMessage] = useState("");
   const [documentQuery, setDocumentQuery] = useState("");
   const [documentResults, setDocumentResults] = useState([]);
@@ -778,8 +779,8 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
 
   useEffect(() => setActiveIndex(0), [relationships]);
   useEffect(() => {
-    setEditing(false); setDraft(null); setMessage("");
-    if (adminMode && document?.id) adminFetch(`/api/documents/${encodeURIComponent(document.id)}`).then((r) => r.json()).then((data) => setDraft({ title: data.title || "", full_text: data.full_text || "" }));
+    setEditing(false); setDraft(null); setDocumentData(null); setMessage("");
+    if (document?.id) adminFetch(`/api/documents/${encodeURIComponent(document.id)}`).then((r) => r.json()).then((data) => { setDocumentData(data); if (adminMode) setDraft({ title: data.title || "", full_text: data.full_text || "" }); }).catch(() => {});
   }, [activeIndex, adminMode, document?.id]);
 
   const saveDocument = async () => {
@@ -843,7 +844,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
             Download PDF
           </a>
         </div>
-        {editing ? <textarea value={draft?.full_text || ""} onChange={(e) => setDraft({ ...draft, full_text: e.target.value })} className="m-4 min-h-0 flex-1 rounded-lg border border-blue-300 p-4 font-mono text-sm leading-6 outline-none ring-2 ring-blue-100"/> : <ContinuousPdfViewer key={pdfUrl} source={pdfSource} />}
+        {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(value) => setDraft({ ...draft, full_text: value })} className="m-4 min-h-0 flex-1 p-4 font-mono text-sm leading-6" ariaLabel="Document text"/> : <div className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap border-t bg-white p-5 text-sm leading-7 text-slate-800">{documentData?.metadata?.earlier_text ? <CoalescedAmendment currentText={documentData.full_text || ""} earlier={{ text: documentData.metadata.earlier_text }} glossary={[]} /> : <FormattedText text={documentData?.full_text || "Loading document text…"} />}</div>}
       </section>
     </div>
   );
