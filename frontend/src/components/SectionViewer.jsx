@@ -24,6 +24,21 @@ import { getRememberedUser } from "../userSession";
 import { captureEvent } from "../analytics";
 
 const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+const LEGACY_PDF_GARBAGE = /(?:jftLV|vlk|izdk|ubZ|fnYyh|lkse|flr|Hkk|mi&\[k|la-|laö|@|ö|ªh|æ)/i;
+const cleanDocumentText = (value) => String(value || "")
+  .split(/\r?\n/)
+  .map((line) => line.replace(/[ \t]+/g, " ").trim())
+  .filter((line) => {
+    if (!line) return true;
+    if (/[\u0900-\u097f]/u.test(line)) return false;
+    if (LEGACY_PDF_GARBAGE.test(line)) return false;
+    const letters = (line.match(/[A-Za-z]/g) || []).length;
+    const symbols = (line.match(/[^A-Za-z0-9\s.,;:()'"%/\-]/g) || []).length;
+    return letters >= 3 && symbols <= Math.max(4, letters * 0.35);
+  })
+  .join("\n")
+  .replace(/\n{3,}/g, "\n\n")
+  .trim();
 const adminFetch = (path, options = {}) => {
   const url = /^https?:\/\//i.test(path) ? path : `${apiBaseUrl}${path}`;
   return fetch(url, {
@@ -780,7 +795,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   useEffect(() => setActiveIndex(0), [relationships]);
   useEffect(() => {
     setEditing(false); setDraft(null); setDocumentData(null); setMessage("");
-    if (document?.id) adminFetch(`/api/documents/${encodeURIComponent(document.id)}`).then((r) => r.json()).then((data) => { setDocumentData(data); if (adminMode) setDraft({ title: data.title || "", full_text: data.full_text || "" }); }).catch(() => {});
+    if (document?.id) adminFetch(`/api/documents/${encodeURIComponent(document.id)}`).then((r) => r.json()).then((data) => { const cleaned = { ...data, full_text: cleanDocumentText(data.full_text) }; setDocumentData(cleaned); if (adminMode) setDraft({ title: cleaned.title || "", full_text: cleaned.full_text || "" }); }).catch(() => {});
   }, [activeIndex, adminMode, document?.id]);
 
   const saveDocument = async () => {
