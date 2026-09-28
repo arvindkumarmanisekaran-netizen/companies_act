@@ -814,16 +814,16 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     if (!document?.id) return;
     let cancelled = false;
     setLoadingText(true);
-    Promise.all(relationships.map((item) => fetch(`${apiBaseUrl}/api/documents/${encodeURIComponent(item.document.id)}`).then((response) => response.ok ? response.json() : null).catch(() => null)))
-      .then((items) => {
+    const load = (id) => fetch(`${apiBaseUrl}/api/documents/${encodeURIComponent(id)}`).then((response) => response.ok ? response.json() : null).then((item) => item?.id ? { ...item, full_text: cleanCorpusText(item.full_text || "") } : null).catch(() => null);
+    load(document.id).then((active) => {
+      if (cancelled) return;
+      if (active) { setDocumentData((current) => ({ ...current, [active.id]: active })); if (adminMode) setDraft({ title: active.title || "", full_text: active.full_text || "" }); }
+      setLoadingText(false);
+      Promise.all(relationships.filter((item) => item.document?.id !== document.id).map((item) => load(item.document.id))).then((items) => {
         if (cancelled) return;
-        const next = {};
-        items.forEach((item) => { if (item?.id) next[item.id] = { ...item, full_text: cleanCorpusText(item.full_text || "") }; });
-        setDocumentData(next);
-        const active = next[document.id];
-        if (adminMode && active) setDraft({ title: active.title || "", full_text: active.full_text || "" });
-      })
-      .finally(() => { if (!cancelled) setLoadingText(false); });
+        setDocumentData((current) => { const next = { ...current }; items.forEach((item) => { if (item) next[item.id] = item; }); return next; });
+      });
+    });
     return () => { cancelled = true; };
   }, [activeIndex, adminMode, document?.id, relationships.map((item) => item.document?.id).join(",")]);
 
