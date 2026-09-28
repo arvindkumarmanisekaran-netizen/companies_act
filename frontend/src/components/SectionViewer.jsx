@@ -1473,6 +1473,16 @@ const CoalescedAmendment = ({ currentText, earlier, onOpenAmendment, glossary = 
   );
 };
 
+const InlineChangePreview = ({ before, after, glossary = [], provisionId }) => {
+  if (!before || before === after) return null;
+  return (
+    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Earlier / current wording</span>
+      <CoalescedAmendment currentText={after} earlier={{ text: before }} glossary={glossary} provisionId={provisionId} />
+    </div>
+  );
+};
+
 export const SubsectionRenderer = ({ subsection, historical = false, historicalVersions = [], onOpenAmendment, onOpenDocument, editing = false, onTextChange, draftTexts = {}, adminMode = false, onCalloutsChanged, glossary = [], asOfDate }) => {
   const [activeBulb, setActiveBulb] = useState(null);
   const earlierVersion = historicalVersions[0] || subsection.historical_versions?.[0];
@@ -1498,7 +1508,10 @@ export const SubsectionRenderer = ({ subsection, historical = false, historicalV
           <span className="font-bold text-gray-700">{subsection.subsection_number}</span>
         )}
         {subsection.text && (editing && subsection._provisionId ? (
-          <RichTextEditor value={draftTexts[subsection._provisionId] ?? subsection.text} onChange={(value) => onTextChange(subsection._provisionId, value)} className="min-h-24 p-2 text-[15px] leading-7 text-gray-900 sm:text-base" ariaLabel="Subsection text"/>
+          <div className="min-w-0 flex-1">
+            <RichTextEditor value={draftTexts[subsection._provisionId] ?? subsection.text} onChange={(value) => onTextChange(subsection._provisionId, value)} className="min-h-24 p-2 text-[15px] leading-7 text-gray-900 sm:text-base" ariaLabel="Subsection text"/>
+            <InlineChangePreview before={earlierVersion?.text} after={draftTexts[subsection._provisionId] ?? subsection.text} glossary={glossary} provisionId={subsection._provisionId} />
+          </div>
         ) : earlierVersion?.text ? (
           <CoalescedAmendment currentText={subsection.text} earlier={earlierVersion} onOpenAmendment={onOpenAmendment} glossary={glossary} provisionId={subsection._provisionId} callouts={subsection.callouts} onOpenBulb={setActiveBulb} adminMode={adminMode}/>
         ) : (
@@ -1523,7 +1536,10 @@ export const SubsectionRenderer = ({ subsection, historical = false, historicalV
                       {clause.clause_number}
                     </span>
                     {editing && clause._provisionId ? (
-                      <RichTextEditor value={draftTexts[clause._provisionId] ?? clause.text} onChange={(value) => onTextChange(clause._provisionId, value)} className="min-h-20 p-2" ariaLabel="Clause text"/>
+                      <div className="min-w-0 flex-1">
+                        <RichTextEditor value={draftTexts[clause._provisionId] ?? clause.text} onChange={(value) => onTextChange(clause._provisionId, value)} className="min-h-20 p-2" ariaLabel="Clause text"/>
+                        <InlineChangePreview before={group.historical[0]?.text} after={draftTexts[clause._provisionId] ?? clause.text} glossary={glossary} provisionId={clause._provisionId} />
+                      </div>
                     ) : group.historical[0]?.text ? <CoalescedAmendment currentText={clause.text} earlier={group.historical[0]} onOpenAmendment={onOpenAmendment} glossary={glossary} provisionId={clause._provisionId} callouts={clause.callouts} onOpenBulb={setActiveBulb} adminMode={adminMode}/> : <AnchoredText text={clause.text} callouts={clause.callouts} provisionId={clause._provisionId} adminMode={adminMode} onOpenBulb={setActiveBulb} className="min-w-0 flex-1" glossary={glossary}/>} 
                   </div>
                   <CalloutList callouts={clause.callouts} provisionId={clause._provisionId} adminMode={adminMode} allowCreate={false} onChanged={onCalloutsChanged} glossary={glossary} asOfDate={asOfDate}/>
