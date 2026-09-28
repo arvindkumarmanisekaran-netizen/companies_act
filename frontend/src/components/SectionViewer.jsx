@@ -745,6 +745,28 @@ const cleanCorpusText = (value) => {
   return text;
 };
 
+const DOCUMENT_FORMATS = [
+  ["bold", "B"], ["italic", "I"], ["underline", "U"], ["strike", "S"],
+  ["highlight-red", "Red"], ["highlight-green", "Green"], ["highlight-yellow", "Yellow"],
+];
+const applyDocumentFormat = (value, start, end, format) => {
+  if (start === end) return value;
+  const open = `[[${format}]]`; const close = `[[/${format}]]`;
+  return `${value.slice(0, start)}${open}${value.slice(start, end)}${close}${value.slice(end)}`;
+};
+const RichTextToolbar = ({ onFormat }) => <div className="flex flex-wrap gap-1 border-b border-blue-200 bg-blue-50 p-2">
+  {DOCUMENT_FORMATS.map(([format, label]) => <button key={format} type="button" onMouseDown={(event) => { event.preventDefault(); onFormat(format); }} className="rounded border border-blue-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-blue-100">{label}</button>)}
+</div>;
+const RichTextEditor = ({ value, onChange, className = "" }) => {
+  const ref = useRef(null);
+  const format = (name) => { const element = ref.current; if (!element) return; const start = element.selectionStart; const end = element.selectionEnd; if (start === end) return; onChange(applyDocumentFormat(value, start, end, name)); requestAnimationFrame(() => { element.focus(); element.setSelectionRange(start + name.length + 4, end + name.length + 4); }); };
+  return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format}/><textarea ref={ref} value={value} onChange={(event) => onChange(event.target.value)} className="min-h-0 h-full w-full resize-y border-0 p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
+};
+const FormattedDocumentText = ({ text }) => {
+  const parts = String(text || "").split(/(\[\[(?:bold|italic|underline|strike|highlight-(?:red|green|yellow))\]\].*?\[\[\/(?:bold|italic|underline|strike|highlight-(?:red|green|yellow))\]\])/gs);
+  return <>{parts.map((part, index) => { const match = part.match(/^\[\[(bold|italic|underline|strike|highlight-(?:red|green|yellow))\]\]([\s\S]*?)\[\[\/\1\]\]$/); if (!match) return <React.Fragment key={index}>{part}</React.Fragment>; const styles = { bold: "font-bold", italic: "italic", underline: "underline", strike: "line-through", "highlight-red": "bg-red-200", "highlight-green": "bg-green-200", "highlight-yellow": "bg-yellow-200" }; return <span key={index} className={styles[match[1]]}>{match[2]}</span>; })}</>;
+};
+
 const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged }) => {
   const relationships = (context?.relationships || []).filter((relationship, index, items) => {
     const documentId = relationship.document?.id;
@@ -807,7 +829,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(document.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
-    document.title = payload.title; setEditing(false); setMessage("Saved.");
+    document.title = payload.title; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.();
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
   const addReference = async (documentId) => { const response = await adminFetch("/api/admin/relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document_id: documentId, provision_id: targetProvisionId, relationship_type: "references" }) }); const payload = await response.json().catch(() => ({})); if (!response.ok) return setMessage(payload.detail || "Unable to add reference"); onChanged?.(); onClose(); };
@@ -837,25 +859,10 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           <button type="button" onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close document details">
             <X size={20} />
           </button>
+          {adminMode && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} disabled={!activeDocument} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Edit</button>)}
         </header>
         <div className="max-h-[55vh] shrink-0 space-y-4 overflow-y-auto p-4 text-sm text-slate-700">
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
-          {relationships.length > 1 && (
-            <label className="block min-w-0 flex-1 sm:max-w-md">
-              <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Document</span>
-              <select
-                value={activeIndex}
-                onChange={(event) => setActiveIndex(Number(event.target.value))}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
-              >
-                {relationships.map((item, index) => (
-                  <option key={item.relationship_id} value={index}>
-                    {item.document.instrument_type || "Document"} — {item.document.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
           {adminMode && targetProvisionId && <div className="rounded-lg border border-blue-200 bg-blue-50 p-3"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase text-blue-950">Manage PDF references</span><button onClick={() => setShowAddReference((value) => !value)} className="rounded bg-blue-950 px-3 py-1.5 text-xs font-bold text-white">{showAddReference ? "Cancel add" : "+ Add PDF reference"}</button></div>{showAddReference && <div className="mb-3 rounded border border-blue-200 bg-white p-2"><form onSubmit={(e) => { e.preventDefault(); searchDocuments(); }} className="flex gap-2"><input autoFocus value={documentQuery} onChange={(e) => setDocumentQuery(e.target.value)} placeholder="Search PDF title or database ID…" className="min-w-0 flex-1 rounded border px-2 py-1.5 text-xs"/><button className="rounded bg-blue-950 px-3 py-1.5 text-xs font-bold text-white">Search</button></form><div className="mt-2 max-h-48 overflow-y-auto">{documentResults.map((item) => <button key={item.id} onClick={() => addReference(item.id)} className="block w-full border-t px-2 py-2 text-left text-xs hover:bg-blue-50"><strong>{item.instrument_type}</strong> — {item.title}<span className="block text-[10px] text-slate-500">Click to add</span></button>)}{documentQuery && !documentResults.length && <p className="p-2 text-xs text-slate-500">Search to find PDFs already in the database.</p>}</div></div>}<div className="max-h-48 space-y-1 overflow-y-auto">{relationships.map((item) => <div key={item.relationship_id} className="flex items-center justify-between gap-2 rounded bg-white px-2 py-1.5 text-xs"><span className="truncate">{item.document.title}</span><button onClick={() => removeReference(item.relationship_id)} className="shrink-0 font-bold text-red-700">Delete</button></div>)}</div></div>}
           <a
             href={`${pdfUrl}?download=true`}
@@ -864,11 +871,11 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
             Download PDF
           </a>
         </div>
-        {editing ? <textarea value={draft?.full_text || ""} onChange={(e) => setDraft({ ...draft, full_text: e.target.value })} className="m-4 min-h-0 flex-1 rounded-lg border border-blue-300 p-4 font-mono text-sm leading-6 outline-none ring-2 ring-blue-100"/> : (
+        {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
             {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : earlierDocument ? (
               <CoalescedAmendment currentText={activeDocument?.full_text || ""} earlier={{ text: earlierDocument.full_text, source_note: `${earlierDocument.title || "Earlier document"} (${earlierDocument.publication_date || "previous version"})` }} />
-            ) : <pre className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800">{activeDocument?.full_text || "No converted text is available for this document."}</pre>}
+            ) : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text || "No converted text is available for this document."}/></div>}
           </div>
         )}
       </section>
