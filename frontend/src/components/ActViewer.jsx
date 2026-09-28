@@ -305,6 +305,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
       navigation: index < selectedIndex ? "previous" : "next",
     });
     preserveBrowseContextRef.current = false;
+    window.history.replaceState({}, "", `#section-${encodeURIComponent(entry.section.section_number)}`);
     setNavigationDirection(animate ? (index < selectedIndex ? "back" : "forward") : "none");
     setSelectedSectionKey(entry.key);
     setMobileNavOpen(false);
@@ -418,6 +419,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
         const currentNumber = Number.parseInt(selectedEntry?.section?.section_number, 10);
         setNavigationDirection(Number.isFinite(destinationNumber) && Number.isFinite(currentNumber) && destinationNumber < currentNumber ? "back" : "forward");
         preserveBrowseContextRef.current = true;
+        window.history.replaceState({}, "", `#section-${encodeURIComponent(requested)}`);
         setSelectedSectionKey(sectionKey(chapter, chapter.sections[index], index));
         setSearchTerm("");
         setNavigationResults([]);

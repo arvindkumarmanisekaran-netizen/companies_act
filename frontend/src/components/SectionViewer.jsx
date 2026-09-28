@@ -1621,7 +1621,7 @@ export const SectionCard = ({
   }, [adminMode, asOfDate, section?.section_number]);
 
   const saveAdminText = async () => {
-    if (!adminRecord) return;
+    if (!adminRecord && !timelineData?.section?.id) return;
     setAdminBusy(true); setAdminMessage("");
     try {
       const nodes = [timelineData?.section, ...flattenNodes(timelineData?.provisions || [])].filter(Boolean);
@@ -1907,7 +1907,7 @@ export const SectionCard = ({
 
         <div key={workspaceTab} className="workspace-scene">
         {workspaceTab === "Act" && adminMode && <div className="mb-4 flex flex-wrap items-center gap-2 border-y border-slate-200 py-2">
-          <button type="button" disabled={adminEditing || adminBusy || !adminRecord} onClick={() => { setAdminTitleDraft(timelineData?.section?.title || section.title || adminRecord?.title || ""); setAdminChanges({}); setAdminEditing(true); }} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"><Pencil size={14}/>Edit</button>
+          <button type="button" disabled={adminEditing || adminBusy || (!adminRecord && !timelineData?.section?.id)} onClick={() => { setAdminTitleDraft(timelineData?.section?.title || section.title || adminRecord?.title || ""); setAdminChanges({}); setAdminEditing(true); }} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"><Pencil size={14}/>Edit</button>
           <button type="button" disabled={!adminEditing || adminBusy} onClick={saveAdminText} className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"><Save size={14}/>Save</button>
           <button type="button" disabled={adminEditing || adminBusy || !adminRevision} onClick={undoAdminText} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 disabled:opacity-40"><Undo2 size={14}/>Undo</button>
           <button type="button" disabled={!adminEditing || adminBusy} onClick={() => { setAdminChanges({}); setAdminEditing(false); setAdminMessage(""); }} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-40"><X size={14}/>Cancel</button>
