@@ -1072,15 +1072,23 @@ const GlossaryText = ({ children, glossary = [], onNavigate, currentProvisionId 
 };
 
 const TEXT_FORMATS = {
+  bold: { label: "B", title: "Bold", open: "[[bold]]", close: "[[/bold]]", className: "font-bold" },
   strike: { label: "S", title: "Strikeout", open: "[[strike]]", close: "[[/strike]]", className: "line-through decoration-2" },
   underline: { label: "U", title: "Underline", open: "[[underline]]", close: "[[/underline]]", className: "underline decoration-2" },
   italic: { label: "I", title: "Italic", open: "[[italic]]", close: "[[/italic]]", className: "italic" },
-  highlight: { label: "H", title: "Highlight", open: "[[highlight]]", close: "[[/highlight]]", className: "bg-yellow-200 px-0.5" },
+  superscript: { label: "X²", title: "Superscript", open: "[[sup]]", close: "[[/sup]]", className: "align-super text-[0.7em]" },
+  subscript: { label: "X₂", title: "Subscript", open: "[[sub]]", close: "[[/sub]]", className: "align-sub text-[0.7em]" },
 };
+const HIGHLIGHT_COLORS = [
+  ["yellow", "#fef08a"], ["green", "#bbf7d0"], ["blue", "#bfdbfe"],
+  ["pink", "#fbcfe8"], ["orange", "#fed7aa"], ["purple", "#ddd6fe"],
+];
+const highlightFormats = Object.fromEntries(HIGHLIGHT_COLORS.map(([name, color]) => [`highlight-${name}`, { title: `${name} highlight`, open: `[[highlight-${name}]]`, close: `[[/highlight-${name}]]`, style: { backgroundColor: color }, className: "px-0.5" }]));
+const ALL_TEXT_FORMATS = { ...TEXT_FORMATS, ...highlightFormats };
 
 const formattedTextParts = (text) => {
   const root = []; const stack = [root];
-  const marker = /\[\[(strike|underline|italic|highlight|\/strike|\/underline|\/italic|\/highlight)\]\]/g;
+  const marker = /\[\[(strike|underline|italic|bold|sup|sub|highlight-(?:yellow|green|blue|pink|orange|purple)|\/strike|\/underline|\/italic|\/bold|\/sup|\/sub|\/highlight-(?:yellow|green|blue|pink|orange|purple))\]\]/g;
   let cursor = 0; let match;
   while ((match = marker.exec(String(text || "")))) {
     if (match.index > cursor) stack[stack.length - 1].push({ text: String(text).slice(cursor, match.index) });
@@ -1095,7 +1103,7 @@ const formattedTextParts = (text) => {
 
 const FormattedText = ({ text, glossary = [], currentProvisionId = null, adminMode = false }) => {
   const render = (items, keyPrefix = "formatted") => items.map((item, index) => item.format
-    ? <span key={`${keyPrefix}-${index}`} className={TEXT_FORMATS[item.format]?.className}>{render(item.children, `${keyPrefix}-${index}`)}</span>
+    ? <span key={`${keyPrefix}-${index}`} className={ALL_TEXT_FORMATS[item.format]?.className} style={ALL_TEXT_FORMATS[item.format]?.style}>{render(item.children, `${keyPrefix}-${index}`)}</span>
     : <GlossaryText key={`${keyPrefix}-${index}`} glossary={glossary} currentProvisionId={currentProvisionId} adminMode={adminMode}>{item.text}</GlossaryText>);
   return <>{render(formattedTextParts(text))}</>;
 };
@@ -1119,9 +1127,20 @@ const RichTextToolbar = ({ textareaRef, onChange }) => {
       textarea.setSelectionRange(start, start + selected.length);
     });
   };
+  const clear = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart ?? 0; const end = textarea.selectionEnd ?? start;
+    const clean = textarea.value.slice(start, end).replace(/\[\[\/?(?:strike|underline|italic|bold|sup|sub|highlight-(?:yellow|green|blue|pink|orange|purple))\]\]/g, "");
+    onChange(`${textarea.value.slice(0, start)}${clean}${textarea.value.slice(end)}`);
+  };
   return <div className="flex flex-wrap items-center gap-1 rounded-t-lg border border-blue-300 bg-blue-50 px-2 py-1.5" aria-label="Text formatting toolbar">
     <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-blue-900">Format</span>
     {Object.entries(TEXT_FORMATS).map(([name, format]) => <button key={name} type="button" title={format.title} aria-label={format.title} onMouseDown={(event) => event.preventDefault()} onClick={() => apply(format)} className={`min-w-7 rounded border border-blue-200 bg-white px-2 py-1 text-xs font-bold text-slate-800 hover:bg-blue-100 ${format.className}`}>{format.label}</button>)}
+    <span className="mx-1 h-5 border-l border-blue-200" />
+    <span className="text-[10px] font-bold uppercase tracking-wide text-blue-900">Highlight</span>
+    {HIGHLIGHT_COLORS.map(([name, color]) => <button key={name} type="button" title={`${name} highlight`} aria-label={`${name} highlight`} onMouseDown={(event) => event.preventDefault()} onClick={() => apply(highlightFormats[`highlight-${name}`])} className="size-6 rounded border border-blue-200" style={{ backgroundColor: color }} />)}
+    <button type="button" title="Clear formatting" aria-label="Clear formatting" onMouseDown={(event) => event.preventDefault()} onClick={clear} className="ml-1 rounded border border-blue-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-700 hover:bg-blue-100">Clear</button>
   </div>;
 };
 
