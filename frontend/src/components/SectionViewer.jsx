@@ -773,6 +773,9 @@ const FormattedDocumentText = ({ text }) => {
   const parts = String(text || "").split(/(\[\[(?:bold|italic|underline|strike|highlight-[a-z0-9]+)\]\].*?\[\[\/(?:bold|italic|underline|strike|highlight-[a-z0-9]+)\]\])/gs);
   return <>{parts.map((part, index) => { const match = part.match(/^\[\[(bold|italic|underline|strike|highlight-([a-z0-9]+))\]\]([\s\S]*?)\[\[\/\1\]\]$/); if (!match) return <React.Fragment key={index}>{part}</React.Fragment>; const styles = { bold: "font-bold", italic: "italic", underline: "underline", strike: "line-through" }; return <span key={index} className={styles[match[1]] || ""} style={match[2] ? { backgroundColor: `#${match[2]}` } : undefined}>{match[3]}</span>; })}</>;
 };
+const displayInlineText = (value, glossary, provisionId, adminMode) => String(value || "").includes("[[")
+  ? <FormattedDocumentText text={value}/>
+  : <GlossaryText glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{value}</GlossaryText>;
 
 const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged }) => {
   const relationships = (context?.relationships || []).filter((relationship, index, items) => {
@@ -1293,8 +1296,8 @@ const AnchoredText = ({ text = "", callouts = [], provisionId, adminMode, onOpen
   if (previewAnchor) markers.push({ offset: previewAnchor.offset, preview: previewAnchor });
   markers.sort((a, b) => a.offset - b.offset);
   const parts = []; let cursor = 0;
-  markers.forEach((marker, index) => { const offset = Math.max(cursor, Math.min(text.length, marker.offset)); parts.push(<GlossaryText key={`text-${cursor}-${offset}`} glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{text.slice(cursor, offset)}</GlossaryText>); if (marker.bulb) { const bulbColor = CALLOUT_COLORS[marker.bulb.color_index] || CALLOUT_COLORS[0]; parts.push(<button data-anchor-marker key={`bulb-${marker.bulb.id}`} type="button" onClick={() => onOpenBulb({ note: marker.bulb, provisionId, anchor: marker.bulb.anchor })} className={`bulb-icon relative -top-[0.5em] mx-0.5 inline-grid size-5 place-items-center rounded-full border border-white/70 text-white shadow-sm ring-1 ring-slate-300 transition hover:brightness-90 ${bulbColor.dot}`} aria-label="View additional information"><Lightbulb size={12}/></button>); } else parts.push(<span data-anchor-marker key={`preview-${index}`} className="pointer-events-none relative -top-[0.5em] mx-0.5 inline-grid size-5 animate-pulse place-items-center rounded-full border-2 border-dashed border-amber-500 bg-amber-100 text-amber-800 shadow"><Lightbulb size={12}/></span>); cursor = offset; });
-  parts.push(<GlossaryText key={`text-${cursor}-end`} glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{text.slice(cursor)}</GlossaryText>);
+  markers.forEach((marker, index) => { const offset = Math.max(cursor, Math.min(text.length, marker.offset)); parts.push(<React.Fragment key={`text-${cursor}-${offset}`}>{displayInlineText(text.slice(cursor, offset), glossary, provisionId, adminMode)}</React.Fragment>); if (marker.bulb) { const bulbColor = CALLOUT_COLORS[marker.bulb.color_index] || CALLOUT_COLORS[0]; parts.push(<button data-anchor-marker key={`bulb-${marker.bulb.id}`} type="button" onClick={() => onOpenBulb({ note: marker.bulb, provisionId, anchor: marker.bulb.anchor })} className={`bulb-icon relative -top-[0.5em] mx-0.5 inline-grid size-5 place-items-center rounded-full border border-white/70 text-white shadow-sm ring-1 ring-slate-300 transition hover:brightness-90 ${bulbColor.dot}`} aria-label="View additional information"><Lightbulb size={12}/></button>); } else parts.push(<span data-anchor-marker key={`preview-${index}`} className="pointer-events-none relative -top-[0.5em] mx-0.5 inline-grid size-5 animate-pulse place-items-center rounded-full border-2 border-dashed border-amber-500 bg-amber-100 text-amber-800 shadow"><Lightbulb size={12}/></span>); cursor = offset; });
+  parts.push(<React.Fragment key={`text-${cursor}-end`}>{displayInlineText(text.slice(cursor), glossary, provisionId, adminMode)}</React.Fragment>);
   if (!text && !bulbs.length && !adminMode) return null;
   return <span ref={rootRef} onDragOver={dragOver} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPreviewAnchor(null); }} onDrop={drop} className={`${className} ${!text ? "inline-flex min-h-10 w-full items-center justify-center" : ""} ${adminMode ? "rounded outline-offset-4 hover:outline hover:outline-2 hover:outline-dashed hover:outline-amber-300" : ""}`}>{parts}{!text && adminMode && !bulbs.length && !previewAnchor && <span className="text-xs font-semibold text-amber-700">Drop a bulb here for the end of the section</span>}</span>;
 };
@@ -1394,7 +1397,7 @@ const CoalescedAmendment = ({ currentText, earlier, onOpenAmendment, glossary = 
   let markerIndex = 0;
   let currentOffset = 0;
   const styledCurrentPart = (value, type, key) => {
-    const content = <GlossaryText glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{value}</GlossaryText>;
+    const content = displayInlineText(value, glossary, provisionId, adminMode);
     return type === "added"
       ? <ins key={key} className="rounded-sm bg-emerald-100 px-0.5 font-medium text-emerald-900 no-underline box-decoration-clone">{content}</ins>
       : <React.Fragment key={key}>{content}</React.Fragment>;
