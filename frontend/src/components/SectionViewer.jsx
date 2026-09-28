@@ -776,6 +776,11 @@ const FormattedDocumentText = ({ text }) => {
 const displayInlineText = (value, glossary, provisionId, adminMode) => String(value || "").includes("[[")
   ? <FormattedDocumentText text={value}/>
   : <GlossaryText glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{value}</GlossaryText>;
+const DOCUMENT_CACHE_KEY = "companies-act:document-cache:v1";
+const PDF_CACHE_KEY = "companies-act:pdf-cache:v1";
+const textHash = (value) => { let hash = 2166136261; for (const character of String(value || "")) { hash ^= character.charCodeAt(0); hash = Math.imul(hash, 16777619); } return (hash >>> 0).toString(16); };
+const readLru = (key) => { try { return JSON.parse(sessionStorage.getItem(key) || "[]"); } catch { return []; } };
+const writeLru = (key, entries, limit) => { try { sessionStorage.setItem(key, JSON.stringify(entries.slice(-limit))); } catch { /* storage may be unavailable */ } };
 
 const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged }) => {
   const relationships = (context?.relationships || []).filter((relationship, index, items) => {
@@ -815,15 +820,18 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     let cancelled = false;
     setLoadingText(true);
     const load = (id) => fetch(`${apiBaseUrl}/api/documents/${encodeURIComponent(id)}`).then((response) => response.ok ? response.json() : null).then((item) => item?.id ? { ...item, full_text: cleanCorpusText(item.full_text || "") } : null).catch(() => null);
+    const cached = readLru(DOCUMENT_CACHE_KEY).find((item) => item.id === document.id);
+    if (cached?.full_text) { setDocumentData((current) => ({ ...current, [cached.id]: cached })); if (adminMode) setDraft({ title: cached.title || "", full_text: cached.full_text || "" }); setLoadingText(false); }
     load(document.id).then((active) => {
       if (cancelled) return;
-      if (active) { setDocumentData((current) => ({ ...current, [active.id]: active })); if (adminMode) setDraft({ title: active.title || "", full_text: active.full_text || "" }); }
+      if (active) { const entry = { ...active, content_hash: textHash(active.full_text) }; const cachedHash = readLru(DOCUMENT_CACHE_KEY).find((item) => item.id === active.id)?.content_hash; if (cachedHash !== entry.content_hash) setDocumentData((current) => ({ ...current, [active.id]: entry })); if (adminMode) setDraft({ title: active.title || "", full_text: active.full_text || "" }); const entries = readLru(DOCUMENT_CACHE_KEY).filter((item) => item.id !== active.id); writeLru(DOCUMENT_CACHE_KEY, [...entries, entry], 20); }
       setLoadingText(false);
       Promise.all(relationships.filter((item) => item.document?.id !== document.id).map((item) => load(item.document.id))).then((items) => {
         if (cancelled) return;
-        setDocumentData((current) => { const next = { ...current }; items.forEach((item) => { if (item) next[item.id] = item; }); return next; });
+        setDocumentData((current) => { const next = { ...current }; items.forEach((item) => { if (item) { const entry = { ...item, content_hash: textHash(item.full_text) }; next[item.id] = entry; const entries = readLru(DOCUMENT_CACHE_KEY).filter((cachedItem) => cachedItem.id !== item.id); writeLru(DOCUMENT_CACHE_KEY, [...entries, entry], 20); } }); return next; });
       });
     });
+    if (isNotification && pdfUrl) { const pdfs = readLru(PDF_CACHE_KEY).filter((url) => url !== pdfUrl); writeLru(PDF_CACHE_KEY, [...pdfs, pdfUrl], 5); fetch(pdfUrl, { cache: "force-cache" }).catch(() => {}); }
     return () => { cancelled = true; };
   }, [activeIndex, adminMode, document?.id, relationships.map((item) => item.document?.id).join(",")]);
 
