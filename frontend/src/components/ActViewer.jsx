@@ -114,6 +114,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
   const suppressSwipeClickTimerRef = useRef(null);
   const preserveBrowseContextRef = useRef(false);
   const trackedSectionRef = useRef(null);
+  const lastSectionByChapterRef = useRef(new Map());
   const rawChapters = data?.chapters || [];
 
   const chapters = useMemo(() => {
@@ -305,8 +306,11 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
       navigation: index < selectedIndex ? "previous" : "next",
     });
     preserveBrowseContextRef.current = false;
+    const chapterNumber = String(entry.chapter.chapter_number || "").trim().toUpperCase();
+    lastSectionByChapterRef.current.set(chapterNumber, entry.key);
     window.history.replaceState({}, "", `#section-${encodeURIComponent(entry.section.section_number)}`);
     setNavigationDirection(animate ? (index < selectedIndex ? "back" : "forward") : "none");
+    setSelectedChapter(chapterNumber);
     setSelectedSectionKey(entry.key);
     setMobileNavOpen(false);
     if (scrollToTop) scrollReaderToTop();
@@ -391,8 +395,25 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
 
   const chooseChapter = (chapterNumber) => {
     preserveBrowseContextRef.current = false;
+    const normalizedChapter = chapterNumber ? String(chapterNumber).trim().toUpperCase() : null;
+    if (selectedEntry) {
+      lastSectionByChapterRef.current.set(String(selectedEntry.chapter.chapter_number || "").trim().toUpperCase(), selectedEntry.key);
+    }
     setSelectedChapter(chapterNumber);
-    setSelectedSectionKey(null);
+    if (!normalizedChapter) {
+      if (selectedEntry) setSelectedSectionKey(selectedEntry.key);
+    } else {
+      const chapter = chapters.find((item) => String(item.chapter_number || "").trim().toUpperCase() === normalizedChapter);
+      const rememberedKey = lastSectionByChapterRef.current.get(normalizedChapter);
+      const rememberedEntry = chapter?.sections?.some((item, index) => sectionKey(chapter, item, index) === rememberedKey);
+      const nextSection = rememberedEntry ? rememberedKey : chapter?.sections?.length ? sectionKey(chapter, chapter.sections[0], 0) : null;
+      if (nextSection) {
+        lastSectionByChapterRef.current.set(normalizedChapter, nextSection);
+        setSelectedSectionKey(nextSection);
+        const nextSectionNumber = chapter.sections.find((item, index) => sectionKey(chapter, item, index) === nextSection)?.section_number;
+        if (nextSectionNumber) window.history.replaceState({}, "", `#section-${encodeURIComponent(nextSectionNumber)}`);
+      } else setSelectedSectionKey(null);
+    }
     captureEvent("chapter_selected", { chapter_number: chapterNumber || "all" });
   };
 
@@ -420,6 +441,9 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
         setNavigationDirection(Number.isFinite(destinationNumber) && Number.isFinite(currentNumber) && destinationNumber < currentNumber ? "back" : "forward");
         preserveBrowseContextRef.current = true;
         window.history.replaceState({}, "", `#section-${encodeURIComponent(requested)}`);
+        const chapterNumber = String(chapter.chapter_number || "").trim().toUpperCase();
+        lastSectionByChapterRef.current.set(chapterNumber, sectionKey(chapter, chapter.sections[index], index));
+        setSelectedChapter(chapterNumber);
         setSelectedSectionKey(sectionKey(chapter, chapter.sections[index], index));
         setSearchTerm("");
         setNavigationResults([]);
