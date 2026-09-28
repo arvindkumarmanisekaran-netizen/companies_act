@@ -870,7 +870,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           <button type="button" onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close document details">
             <X size={20} />
           </button>
-          {adminMode && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} disabled={!activeDocument} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Edit</button>)}
+          {adminMode && !isNotification && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} disabled={!activeDocument} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Edit</button>)}
         </header>
         <div className="max-h-[55vh] shrink-0 space-y-4 overflow-y-auto p-4 text-sm text-slate-700">
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
