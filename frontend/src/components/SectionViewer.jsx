@@ -1871,7 +1871,7 @@ export const SectionCard = ({
             </div>
           ))
         ) : (
-          <p className="text-[15px] leading-7 text-gray-900 sm:text-base"><AnchoredText text={timelineData?.section?.current_text || ""} callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></p>
+          (adminMode && adminEditing && timelineData?.section?.id) ? <RichTextEditor value={adminChanges[timelineData.section.id] ?? timelineData.section.current_text ?? ""} onChange={(value) => setAdminChanges((changes) => ({ ...changes, [timelineData.section.id]: value }))} className="min-h-32"/> : <p className="text-[15px] leading-7 text-gray-900 sm:text-base"><AnchoredText text={timelineData?.section?.current_text || ""} callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></p>
         )}
         {subsectionGroups.length > 0 && <div className="mt-4 border-t border-slate-200 pt-3"><AnchoredText text="" callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></div>}
         </>}
