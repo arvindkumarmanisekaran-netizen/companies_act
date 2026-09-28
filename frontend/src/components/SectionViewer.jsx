@@ -1071,6 +1071,61 @@ const GlossaryText = ({ children, glossary = [], onNavigate, currentProvisionId 
   return <>{parts}</>;
 };
 
+const TEXT_FORMATS = {
+  strike: { label: "S", title: "Strikeout", open: "[[strike]]", close: "[[/strike]]", className: "line-through decoration-2" },
+  underline: { label: "U", title: "Underline", open: "[[underline]]", close: "[[/underline]]", className: "underline decoration-2" },
+  italic: { label: "I", title: "Italic", open: "[[italic]]", close: "[[/italic]]", className: "italic" },
+  highlight: { label: "H", title: "Highlight", open: "[[highlight]]", close: "[[/highlight]]", className: "bg-yellow-200 px-0.5" },
+};
+
+const formattedTextParts = (text) => {
+  const root = []; const stack = [root];
+  const marker = /\[\[(strike|underline|italic|highlight|\/strike|\/underline|\/italic|\/highlight)\]\]/g;
+  let cursor = 0; let match;
+  while ((match = marker.exec(String(text || "")))) {
+    if (match.index > cursor) stack[stack.length - 1].push({ text: String(text).slice(cursor, match.index) });
+    const token = match[1];
+    if (token.startsWith("/")) { if (stack.length > 1) stack.pop(); }
+    else { const node = { format: token, children: [] }; stack[stack.length - 1].push(node); stack.push(node.children); }
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < String(text || "").length) stack[stack.length - 1].push({ text: String(text).slice(cursor) });
+  return root;
+};
+
+const FormattedText = ({ text, glossary = [], currentProvisionId = null, adminMode = false }) => {
+  const render = (items, keyPrefix = "formatted") => items.map((item, index) => item.format
+    ? <span key={`${keyPrefix}-${index}`} className={TEXT_FORMATS[item.format]?.className}>{render(item.children, `${keyPrefix}-${index}`)}</span>
+    : <GlossaryText key={`${keyPrefix}-${index}`} glossary={glossary} currentProvisionId={currentProvisionId} adminMode={adminMode}>{item.text}</GlossaryText>);
+  return <>{render(formattedTextParts(text))}</>;
+};
+
+const RichTextToolbar = ({ textareaRef, onChange }) => {
+  const apply = (format) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const selectionStart = textarea.selectionStart ?? 0;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    const selected = textarea.value.slice(selectionStart, selectionEnd) || "text";
+    const nextValue = `${textarea.value.slice(0, selectionStart)}${format.open}${selected}${format.close}${textarea.value.slice(selectionEnd)}`;
+    onChange(nextValue);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const start = selectionStart + format.open.length;
+      textarea.setSelectionRange(start, start + selected.length);
+    });
+  };
+  return <div className="flex flex-wrap items-center gap-1 rounded-t-lg border border-blue-300 bg-blue-50 px-2 py-1.5" aria-label="Text formatting toolbar">
+    <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-blue-900">Format</span>
+    {Object.entries(TEXT_FORMATS).map(([name, format]) => <button key={name} type="button" title={format.title} aria-label={format.title} onMouseDown={(event) => event.preventDefault()} onClick={() => apply(format)} className={`min-w-7 rounded border border-blue-200 bg-white px-2 py-1 text-xs font-bold text-slate-800 hover:bg-blue-100 ${format.className}`}>{format.label}</button>)}
+  </div>;
+};
+
+const RichTextEditor = ({ value, onChange, className = "", ariaLabel = "Text" }) => {
+  const textareaRef = useRef(null);
+  return <div className="min-w-0 flex-1"><RichTextToolbar textareaRef={textareaRef} onChange={onChange}/><textarea ref={textareaRef} aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} className={`${className} w-full rounded-b-lg border border-t-0 border-blue-300 outline-none ring-2 ring-blue-100`}/></div>;
+};
+
 const LinkedLegalText = ({ children, onNavigate, glossary = [], currentProvisionId = null, adminMode = false }) => {
   const text = String(children || "");
   const pattern = /\b(section\s+(\d+[A-Za-z]?))(?![\w])/gi;
@@ -1252,8 +1307,8 @@ const AnchoredText = ({ text = "", callouts = [], provisionId, adminMode, onOpen
   if (previewAnchor) markers.push({ offset: previewAnchor.offset, preview: previewAnchor });
   markers.sort((a, b) => a.offset - b.offset);
   const parts = []; let cursor = 0;
-  markers.forEach((marker, index) => { const offset = Math.max(cursor, Math.min(text.length, marker.offset)); parts.push(<GlossaryText key={`text-${cursor}-${offset}`} glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{text.slice(cursor, offset)}</GlossaryText>); if (marker.bulb) { const bulbColor = CALLOUT_COLORS[marker.bulb.color_index] || CALLOUT_COLORS[0]; parts.push(<button data-anchor-marker key={`bulb-${marker.bulb.id}`} type="button" onClick={() => onOpenBulb({ note: marker.bulb, provisionId, anchor: marker.bulb.anchor })} className={`bulb-icon relative -top-[0.5em] mx-0.5 inline-grid size-5 place-items-center rounded-full border border-white/70 text-white shadow-sm ring-1 ring-slate-300 transition hover:brightness-90 ${bulbColor.dot}`} aria-label="View additional information"><Lightbulb size={12}/></button>); } else parts.push(<span data-anchor-marker key={`preview-${index}`} className="pointer-events-none relative -top-[0.5em] mx-0.5 inline-grid size-5 animate-pulse place-items-center rounded-full border-2 border-dashed border-amber-500 bg-amber-100 text-amber-800 shadow"><Lightbulb size={12}/></span>); cursor = offset; });
-  parts.push(<GlossaryText key={`text-${cursor}-end`} glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{text.slice(cursor)}</GlossaryText>);
+  markers.forEach((marker, index) => { const offset = Math.max(cursor, Math.min(text.length, marker.offset)); parts.push(<FormattedText key={`text-${cursor}-${offset}`} text={text.slice(cursor, offset)} glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}/>); if (marker.bulb) { const bulbColor = CALLOUT_COLORS[marker.bulb.color_index] || CALLOUT_COLORS[0]; parts.push(<button data-anchor-marker key={`bulb-${marker.bulb.id}`} type="button" onClick={() => onOpenBulb({ note: marker.bulb, provisionId, anchor: marker.bulb.anchor })} className={`bulb-icon relative -top-[0.5em] mx-0.5 inline-grid size-5 place-items-center rounded-full border border-white/70 text-white shadow-sm ring-1 ring-slate-300 transition hover:brightness-90 ${bulbColor.dot}`} aria-label="View additional information"><Lightbulb size={12}/></button>); } else parts.push(<span data-anchor-marker key={`preview-${index}`} className="pointer-events-none relative -top-[0.5em] mx-0.5 inline-grid size-5 animate-pulse place-items-center rounded-full border-2 border-dashed border-amber-500 bg-amber-100 text-amber-800 shadow"><Lightbulb size={12}/></span>); cursor = offset; });
+  parts.push(<FormattedText key={`text-${cursor}-end`} text={text.slice(cursor)} glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}/>);
   if (!text && !bulbs.length && !adminMode) return null;
   return <span ref={rootRef} onDragOver={dragOver} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPreviewAnchor(null); }} onDrop={drop} className={`${className} ${!text ? "inline-flex min-h-10 w-full items-center justify-center" : ""} ${adminMode ? "rounded outline-offset-4 hover:outline hover:outline-2 hover:outline-dashed hover:outline-amber-300" : ""}`}>{parts}{!text && adminMode && !bulbs.length && !previewAnchor && <span className="text-xs font-semibold text-amber-700">Drop a bulb here for the end of the section</span>}</span>;
 };
@@ -1395,16 +1450,6 @@ const CoalescedAmendment = ({ currentText, earlier, onOpenAmendment, glossary = 
   );
 };
 
-const InlineChangePreview = ({ before, after, glossary = [], provisionId }) => {
-  if (before === after) return null;
-  return (
-    <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
-      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Wording preview</span>
-      <CoalescedAmendment currentText={after} earlier={{ text: before }} glossary={glossary} provisionId={provisionId} />
-    </div>
-  );
-};
-
 export const SubsectionRenderer = ({ subsection, historical = false, historicalVersions = [], onOpenAmendment, onOpenDocument, editing = false, onTextChange, draftTexts = {}, adminMode = false, onCalloutsChanged, glossary = [], asOfDate }) => {
   const [activeBulb, setActiveBulb] = useState(null);
   const earlierVersion = historicalVersions[0] || subsection.historical_versions?.[0];
@@ -1430,10 +1475,7 @@ export const SubsectionRenderer = ({ subsection, historical = false, historicalV
           <span className="font-bold text-gray-700">{subsection.subsection_number}</span>
         )}
         {subsection.text && (editing && subsection._provisionId ? (
-          <div className="min-w-0 flex-1">
-            <textarea value={draftTexts[subsection._provisionId] ?? subsection.text} onChange={(event) => onTextChange(subsection._provisionId, event.target.value)} className="min-h-24 w-full rounded-lg border border-blue-300 p-2 text-[15px] leading-7 text-gray-900 outline-none ring-2 ring-blue-100 sm:text-base"/>
-            <InlineChangePreview before={subsection.text} after={draftTexts[subsection._provisionId] ?? subsection.text} glossary={glossary} provisionId={subsection._provisionId} />
-          </div>
+          <RichTextEditor value={draftTexts[subsection._provisionId] ?? subsection.text} onChange={(value) => onTextChange(subsection._provisionId, value)} className="min-h-24 p-2 text-[15px] leading-7 text-gray-900 sm:text-base" ariaLabel="Subsection text"/>
         ) : earlierVersion?.text ? (
           <CoalescedAmendment currentText={subsection.text} earlier={earlierVersion} onOpenAmendment={onOpenAmendment} glossary={glossary} provisionId={subsection._provisionId} callouts={subsection.callouts} onOpenBulb={setActiveBulb} adminMode={adminMode}/>
         ) : (
@@ -1458,10 +1500,7 @@ export const SubsectionRenderer = ({ subsection, historical = false, historicalV
                       {clause.clause_number}
                     </span>
                     {editing && clause._provisionId ? (
-                      <div className="min-w-0 flex-1">
-                        <textarea value={draftTexts[clause._provisionId] ?? clause.text} onChange={(event) => onTextChange(clause._provisionId, event.target.value)} className="min-h-20 w-full rounded-lg border border-blue-300 p-2 outline-none ring-2 ring-blue-100"/>
-                        <InlineChangePreview before={clause.text} after={draftTexts[clause._provisionId] ?? clause.text} glossary={glossary} provisionId={clause._provisionId} />
-                      </div>
+                      <RichTextEditor value={draftTexts[clause._provisionId] ?? clause.text} onChange={(value) => onTextChange(clause._provisionId, value)} className="min-h-20 p-2" ariaLabel="Clause text"/>
                     ) : group.historical[0]?.text ? <CoalescedAmendment currentText={clause.text} earlier={group.historical[0]} onOpenAmendment={onOpenAmendment} glossary={glossary} provisionId={clause._provisionId} callouts={clause.callouts} onOpenBulb={setActiveBulb} adminMode={adminMode}/> : <AnchoredText text={clause.text} callouts={clause.callouts} provisionId={clause._provisionId} adminMode={adminMode} onOpenBulb={setActiveBulb} className="min-w-0 flex-1" glossary={glossary}/>} 
                   </div>
                   <CalloutList callouts={clause.callouts} provisionId={clause._provisionId} adminMode={adminMode} allowCreate={false} onChanged={onCalloutsChanged} glossary={glossary} asOfDate={asOfDate}/>
@@ -1882,10 +1921,7 @@ export const SectionCard = ({
         ) : (
           timelineData?.section?.current_text ? (
             adminMode && adminEditing ? (
-              <div>
-                <textarea value={adminChanges[timelineData?.section?.id] ?? timelineData.section.current_text} onChange={(event) => setAdminChanges((changes) => ({ ...changes, [timelineData.section.id]: event.target.value }))} className="min-h-40 w-full rounded-lg border border-blue-300 p-3 text-[15px] leading-7 text-gray-900 outline-none ring-2 ring-blue-100 sm:text-base" />
-                <InlineChangePreview before={timelineData.section.current_text} after={adminChanges[timelineData?.section?.id] ?? timelineData.section.current_text} glossary={glossary} provisionId={timelineData.section.id} />
-              </div>
+              <RichTextEditor value={adminChanges[timelineData?.section?.id] ?? timelineData.section.current_text} onChange={(value) => setAdminChanges((changes) => ({ ...changes, [timelineData.section.id]: value }))} className="min-h-40 p-3 text-[15px] leading-7 text-gray-900 sm:text-base" ariaLabel="Section text"/>
             ) : (
               <p className="text-[15px] leading-7 text-gray-900 sm:text-base"><AnchoredText text={timelineData.section.current_text} callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></p>
             )
