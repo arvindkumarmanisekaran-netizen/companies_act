@@ -99,6 +99,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
   const [selectedSectionKey, setSelectedSectionKey] = useState(null);
   const [expandedChapters, setExpandedChapters] = useState(() => new Set());
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchSubmitted, setSearchSubmitted] = useState(false);
   const [navigationResults, setNavigationResults] = useState([]);
   const [navigationResultQuery, setNavigationResultQuery] = useState("");
   const [navigationSearching, setNavigationSearching] = useState(false);
@@ -644,24 +645,24 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
         </div>
 
         <div className="relative border-b border-slate-200 p-4">
-          <form onSubmit={(event) => { event.preventDefault(); runNavigationSearch(searchTerm); }} className="flex gap-2 md:hidden">
+          <form onSubmit={(event) => { event.preventDefault(); setSearchSubmitted(true); runNavigationSearch(searchTerm); }} className="flex gap-2 md:hidden">
             <label className="relative min-w-0 flex-1">
               <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"/>
               <span className="sr-only">Search by section, concept or form</span>
-              <input type="search" inputMode="search" enterKeyHint="search" placeholder="Section, concept or form" value={searchTerm} onChange={(event) => { preserveBrowseContextRef.current = false; setNavigationResults([]); setNavigationResultQuery(""); setSearchTerm(event.target.value); }} aria-controls={navigationResults.length ? "mobile-navigation-search-results" : undefined} className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"/>
+              <input type="search" inputMode="search" enterKeyHint="search" placeholder="Section, concept or form" value={searchTerm} onChange={(event) => { preserveBrowseContextRef.current = false; setNavigationResults([]); setNavigationResultQuery(""); setSearchSubmitted(false); setSearchTerm(event.target.value); }} aria-controls={navigationResults.length ? "mobile-navigation-search-results" : undefined} className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"/>
             </label>
             <button type="submit" disabled={!searchTerm.trim() || navigationSearching} className="motion-control grid size-11 shrink-0 place-items-center rounded-xl bg-blue-950 text-white disabled:opacity-40" aria-label="Run search"><Search size={19}/></button>
           </form>
 
-          <form onSubmit={(event) => { event.preventDefault(); runNavigationSearch(searchTerm); }} className="hidden md:block">
+          <form onSubmit={(event) => { event.preventDefault(); setSearchSubmitted(true); runNavigationSearch(searchTerm); }} className="hidden md:block">
             <label className="relative block">
               <Search size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true"/>
               <span className="sr-only">Search by section, concept or form</span>
-              <input type="search" placeholder="Section, concept or form" value={searchTerm} onChange={(event) => { preserveBrowseContextRef.current = false; setNavigationResults([]); setNavigationResultQuery(""); setSearchTerm(event.target.value); }} aria-controls={navigationResults.length ? "desktop-navigation-search-results" : undefined} className="w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"/>
+              <input type="search" placeholder="Section, concept or form" value={searchTerm} onChange={(event) => { preserveBrowseContextRef.current = false; setNavigationResults([]); setNavigationResultQuery(""); setSearchSubmitted(false); setSearchTerm(event.target.value); }} aria-controls={navigationResults.length ? "desktop-navigation-search-results" : undefined} className="w-full rounded-xl border border-slate-300 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100"/>
             </label>
           </form>
 
-          {searchTerm.trim().length >= 2 && (
+          {searchTerm.trim().length >= 2 && !searchSubmitted && (
             <div id="navigation-search-results" role="listbox" className="mt-2 max-h-72 overflow-y-auto rounded-xl border-2 border-blue-200 bg-white shadow-lg">
               <div className="border-b border-blue-100 bg-blue-50 px-3 py-2 text-xs font-extrabold uppercase tracking-wide text-blue-900">Search results</div>
               {navigationSearching && !visibleSearchResults.length && <div className="px-3 py-2.5 text-xs font-semibold text-slate-500">Finding the best section…</div>}
@@ -691,6 +692,8 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
             </div>
           )}
         </div>
+
+        {searchSubmitted && searchTerm.trim() && <section className="border-b border-blue-200 bg-blue-50 p-3" aria-label="Search results"><h2 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-blue-900">Search results</h2><div className="max-h-72 overflow-y-auto rounded-lg border border-blue-200 bg-white">{navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">Finding the best section…</p>}{!navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">No matching sections found.</p>}{visibleSearchResults.map((result) => <button key={`submitted-${result.match_type}-${result.section_number}`} type="button" onClick={() => jumpToSection(result.section_number, result.provision_id)} className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-blue-50"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-950 text-xs font-extrabold text-white">{result.section_number}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-900">{result.title || `Section ${result.section_number}`}</strong><span className="block truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{result.match_type} · {result.matched_term}</span></span></button>)}</div></section>}
 
         <div className="flex min-h-0 flex-1 flex-col p-3">
           <label className="mb-3 block md:hidden">
