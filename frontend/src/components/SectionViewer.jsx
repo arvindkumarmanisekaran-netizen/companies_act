@@ -756,7 +756,7 @@ const applyDocumentFormat = (value, start, end, format) => {
   return `${value.slice(0, start)}${open}${value.slice(start, end)}${close}${value.slice(end)}`;
 };
 const DOCUMENT_HIGHLIGHT_COLORS = [["Yellow", "#fff59d"], ["Green", "#b9f6ca"], ["Blue", "#bbdefb"], ["Red", "#ffcdd2"], ["Pink", "#f8bbd0"], ["Purple", "#d1c4e9"], ["Orange", "#ffcc80"], ["Gray", "#eeeeee"]];
-const RichTextToolbar = ({ onFormat, onColor }) => <div className="flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-blue-200 bg-blue-50 p-2">
+const RichTextToolbar = ({ onFormat, onColor }) => <div className="sticky top-0 z-20 flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-blue-200 bg-blue-50 p-2 shadow-sm">
   {DOCUMENT_FORMATS.map(([format, Icon]) => <button key={format} type="button" title={format} aria-label={format} onMouseDown={(event) => { event.preventDefault(); onFormat(format); }} className="grid size-8 place-items-center rounded border border-blue-200 bg-white text-slate-700 hover:bg-blue-100"><Icon size={15}/></button>)}
   <span className="mx-1 h-6 w-px bg-blue-200" />
   {DOCUMENT_HIGHLIGHT_COLORS.map(([name, color]) => <button key={color} type="button" title={name} aria-label={name} onMouseDown={(event) => { event.preventDefault(); onColor(color); }} className="size-6 shrink-0 rounded border border-slate-400 shadow-sm hover:ring-2 hover:ring-blue-400" style={{ backgroundColor: color }} />)}
