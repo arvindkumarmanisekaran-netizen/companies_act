@@ -1679,7 +1679,11 @@ export const SectionCard = ({
     const cacheKey = `section:${String(section.section_number).toUpperCase()}:${asOfDate}`;
     if (timelineRefresh > 0) removeReaderCache(cacheKey);
     const cached = timelineRefresh > 0 ? null : readReaderCache(cacheKey);
-    setTimelineData(cached?.data || null);
+    // Keep the current section rendered while an admin add/edit/remove
+    // revalidates it. Clearing this state caused a transient intermediate
+    // screen and made the reader jump away from the current document list.
+    if (cached?.data) setTimelineData(cached.data);
+    else if (timelineRefresh === 0) setTimelineData(null);
     setTimelineLoading(!cached);
 
     fetch(url, { signal: controller.signal, cache: "no-store", headers: { Accept: "application/json" } })
