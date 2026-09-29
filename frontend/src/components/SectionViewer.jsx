@@ -1806,7 +1806,7 @@ export const SectionCard = ({
   ]);
   const instrument = (relationship) => String(relationship.document?.instrument_type || (relationship.metadata?.custom ? "rules" : "")).toLowerCase();
   const categorizedDocuments = {
-    Rules: allRelationships.filter((item) => instrument(item).includes("rule")),
+    Rules: allRelationships.filter((item) => instrument(item).includes("rule") || item.metadata?.custom),
     Notifications: allRelationships.filter((item) => /(form|notification|order|circular)/.test(instrument(item))),
   };
   const insightCallouts = [
