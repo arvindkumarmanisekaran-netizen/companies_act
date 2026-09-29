@@ -803,6 +803,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const relationship = relationships?.[activeIndex];
   const document = creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document;
   const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
+  const hasPdfSource = Boolean(document?.source_path || document?.source_file || documentData[document?.id]?.source_path || documentData[document?.id]?.source_file);
   const pdfUrl = document?.id
     ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf`
     : "";
@@ -882,7 +883,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           <button type="button" onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close document details">
             <X size={20} />
           </button>
-          {adminMode && (!isNotification || creating) && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft?.title?.trim()} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => creating ? onClose() : setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white">Edit</button>)}
+          {adminMode && (!isNotification || creating || !hasPdfSource) && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft?.title?.trim()} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => creating ? onClose() : setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white">Edit</button>)}
         </header>
         <div className="max-h-[55vh] shrink-0 space-y-4 overflow-y-auto p-4 text-sm text-slate-700">
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
@@ -894,7 +895,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
             Download PDF
           </a>}
         </div>
-        {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
+        {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && hasPdfSource ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
             {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : earlierDocument ? (
               <CoalescedAmendment currentText={activeDocument?.full_text || ""} earlier={{ text: earlierDocument.full_text, source_note: `${earlierDocument.title || "Earlier document"} (${earlierDocument.publication_date || "previous version"})` }} />
