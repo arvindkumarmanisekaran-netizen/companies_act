@@ -1017,7 +1017,7 @@ const calloutTypeDetails = (type) => CALLOUT_TYPES[type] || {
   icon: MessageSquareText,
 };
 
-const GLOSSARY_EXCLUDED_TERMS = new Set(["act", "company", "prescribed"]);
+const GLOSSARY_EXCLUDED_TERMS = new Set(["act", "company"]);
 
 const escapeRegularExpression = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -1029,7 +1029,7 @@ const navigateToSection = (sectionNumber, onNavigate, provisionId = null) => {
   onNavigate?.();
 };
 
-const GlossaryTerm = ({ entry, visibleTerm, popupId, onNavigate, adminMode = false }) => {
+const GlossaryTerm = ({ entry, visibleTerm, popupId, onNavigate, adminMode = false, highlighted = false }) => {
   const rootRef = useRef(null);
   const closeTimerRef = useRef(null);
   const [open, setOpen] = useState(false);
@@ -1129,7 +1129,7 @@ const GlossaryTerm = ({ entry, visibleTerm, popupId, onNavigate, adminMode = fal
 
   return (
     <span ref={rootRef} onMouseEnter={showPopup} onMouseLeave={scheduleClose} onFocusCapture={showPopup} onBlurCapture={scheduleClose} className={`glossary-term relative inline ${opensAbove ? "opens-above" : ""}`}>
-      <button type="button" aria-describedby={open ? popupId : undefined} onClick={showPopup} className="glossary-trigger inline border-0 bg-transparent p-0 font-inherit text-inherit">
+      <button type="button" aria-describedby={open ? popupId : undefined} onClick={showPopup} className="glossary-trigger inline border-0 bg-transparent p-0 font-inherit" style={highlighted ? { color: "#4f46e5", fontWeight: 600 } : { color: "inherit" }}>
         {visibleTerm}
       </button>
       {open && createPortal(<div id={popupId} role="tooltip" data-glossary-popover onMouseEnter={cancelClose} onMouseLeave={scheduleClose} onPointerDown={cancelClose} onFocusCapture={cancelClose} style={popupStyle} className="glossary-popover">
@@ -1180,7 +1180,7 @@ const GlossaryText = ({ children, glossary = [], onNavigate, currentProvisionId 
     const visibleTerm = match[2];
     const entry = byTerm.get(visibleTerm.toLowerCase());
     const popupId = `glossary-${entry.provision_id}-${termStart}`;
-    parts.push(<GlossaryTerm key={`${entry.id || entry.provision_id}-${termStart}`} entry={entry} visibleTerm={visibleTerm} popupId={popupId} onNavigate={onNavigate} adminMode={adminMode}/>);
+    parts.push(<GlossaryTerm key={`${entry.id || entry.provision_id}-${termStart}`} entry={entry} visibleTerm={visibleTerm} popupId={popupId} onNavigate={onNavigate} adminMode={adminMode} highlighted={visibleTerm.toLowerCase() === "prescribed"}/>);
     cursor = termStart + visibleTerm.length;
     if (pattern.lastIndex === match.index) pattern.lastIndex += 1;
   }
