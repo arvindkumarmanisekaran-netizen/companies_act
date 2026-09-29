@@ -772,7 +772,7 @@ const RichTextEditor = ({ value, onChange, className = "" }) => {
   const color = (hex) => { document.execCommand("backColor", false, hex); onChange(htmlToMarkup(ref.current?.innerHTML || "")); };
   const rememberSelection = () => { if (ref.current) selection.current = { start: ref.current.selectionStart, end: ref.current.selectionEnd }; };
   useEffect(() => { if (ref.current && htmlToMarkup(ref.current.innerHTML) !== value) ref.current.innerHTML = markupToHtml(value); }, [value]);
-  return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><div ref={ref} contentEditable suppressContentEditableWarning onInput={() => onChange(htmlToMarkup(ref.current?.innerHTML || ""))} onSelect={rememberSelection} className="min-h-32 h-full w-full overflow-y-auto whitespace-pre-wrap p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
+  return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><div ref={ref} contentEditable suppressContentEditableWarning onInput={() => onChange(htmlToMarkup(ref.current?.innerHTML || ""))} onSelect={rememberSelection} className="min-h-32 h-full w-full overflow-y-auto whitespace-pre-wrap p-4 font-sans text-[15px] leading-7 outline-none" spellCheck="true"/></div>;
 };
 const FormattedDocumentText = ({ text }) => <span dangerouslySetInnerHTML={{ __html: markupToHtml(text) }} />;
 const displayInlineText = (value, glossary, provisionId, adminMode) => String(value || "").includes("[[")
@@ -899,9 +899,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
         </div>
         {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && hasPdfSource ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
-            {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : earlierDocument ? (
-              <CoalescedAmendment currentText={activeDocument?.full_text || ""} earlier={{ text: earlierDocument.full_text, source_note: `${earlierDocument.title || "Earlier document"} (${earlierDocument.publication_date || "previous version"})` }} />
-            ) : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text ?? draft?.full_text ?? "No converted text is available for this document."}/></div>}
+            {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text ?? draft?.full_text ?? "No converted text is available for this document."}/></div>}
           </div>
         )}
       </section>
