@@ -851,11 +851,12 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     .at(-1);
 
   const saveDocument = async () => {
+    const savedScrollY = window.scrollY;
     const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: draft.instrument_type || (context?.category === "Notifications" ? "notification" : "rules"), provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
-    if (creating) { context?.onCreated?.(); onChanged?.(); onClose(); return; }
-    document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.();
+    if (creating) { context?.onCreated?.(); onChanged?.(); onClose(); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: "auto" }))); return; }
+    document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.(); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: "auto" })));
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
   const addReference = async (documentId) => { const response = await adminFetch("/api/admin/relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document_id: documentId, provision_id: targetProvisionId, relationship_type: "references" }) }); const payload = await response.json().catch(() => ({})); if (!response.ok) return setMessage(payload.detail || "Unable to add reference"); onChanged?.(); onClose(); };
