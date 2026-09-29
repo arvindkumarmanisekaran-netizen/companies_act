@@ -1598,7 +1598,7 @@ export const SectionCard = ({
   const [focusDocumentId, setFocusDocumentId] = useState(null);
   useEffect(() => { setDocumentCountAdjustments({}); }, [timelineRefresh]);
   useEffect(() => {
-    if (!focusDocumentId || !timelineData) return undefined;
+    if (!focusDocumentId || !timelineData || timelineLoading) return undefined;
     const timer = window.setTimeout(() => {
       const card = [...globalThis.document.querySelectorAll("[data-document-id]")].find((element) => element.dataset.documentId === focusDocumentId);
       if (card) {
@@ -1609,7 +1609,7 @@ export const SectionCard = ({
       setFocusDocumentId(null);
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [timelineData, focusDocumentId]);
+  }, [timelineData, timelineLoading, focusDocumentId]);
   const [activeSectionBulb, setActiveSectionBulb] = useState(null);
   const [glossary, setGlossary] = useState([]);
   useEffect(() => {
