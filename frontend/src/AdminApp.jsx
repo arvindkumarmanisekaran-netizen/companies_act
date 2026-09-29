@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { History, Inbox, LogOut, ShieldCheck, X } from "lucide-react";
+import { FileText, History, Inbox, LogOut, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import ActViewer from "./components/ActViewer";
 import AdminInbox from "./components/AdminInbox";
 import { forgetUser, getRememberedUser } from "./userSession";
@@ -19,6 +19,7 @@ function AdminViewer({ user, onLogout }) {
   const [actData, setActData] = useState(null); const [error, setError] = useState("");
   const asOfDate = todayIso();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [pdfLibraryOpen, setPdfLibraryOpen] = useState(false);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [unreadFeedback, setUnreadFeedback] = useState(0);
   const load = useCallback(() => {
@@ -48,12 +49,24 @@ function AdminViewer({ user, onLogout }) {
   return <div className="min-h-screen bg-slate-50">
     <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 bg-blue-950 px-4 text-white shadow-md sm:h-16 sm:px-6">
       <h1 className="min-w-0 truncate text-sm font-bold tracking-wide sm:text-lg"><span className="sm:hidden">Admin</span><span className="hidden sm:inline">{actData.act_title || "THE COMPANIES ACT, 2013"}</span></h1>
-      <div className="flex shrink-0 items-center gap-1.5 text-xs sm:gap-2"><span className="hidden items-center gap-1 md:flex"><ShieldCheck size={15}/>{user.username}</span><button aria-label="Open inbox" onClick={() => setInboxOpen(true)} className="relative inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><Inbox size={16}/><span className="hidden sm:inline">Inbox</span>{unreadFeedback > 0 && <span className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white sm:static">{unreadFeedback}</span>}</button><button aria-label="Open edit history" onClick={() => setHistoryOpen(true)} className="inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><History size={16}/><span className="hidden sm:inline">History</span></button><button aria-label="Logout" onClick={onLogout} className="inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><LogOut size={16}/><span className="hidden sm:inline">Logout</span></button></div>
+      <div className="flex shrink-0 items-center gap-1.5 text-xs sm:gap-2"><span className="hidden items-center gap-1 md:flex"><ShieldCheck size={15}/>{user.username}</span><button aria-label="Open PDF library" onClick={() => setPdfLibraryOpen(true)} className="inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><FileText size={16}/><span className="hidden sm:inline">PDFs</span></button><button aria-label="Open inbox" onClick={() => setInboxOpen(true)} className="relative inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><Inbox size={16}/><span className="hidden sm:inline">Inbox</span>{unreadFeedback > 0 && <span className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-extrabold text-white sm:static">{unreadFeedback}</span>}</button><button aria-label="Open edit history" onClick={() => setHistoryOpen(true)} className="inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><History size={16}/><span className="hidden sm:inline">History</span></button><button aria-label="Logout" onClick={onLogout} className="inline-flex items-center gap-1 rounded border border-blue-700 p-2 hover:bg-blue-900 sm:px-2.5 sm:py-1.5"><LogOut size={16}/><span className="hidden sm:inline">Logout</span></button></div>
     </header>
     <ActViewer data={actData} asOfDate={asOfDate} adminMode userName={user.username} onLogout={onLogout}/>
-    {historyOpen && <AdminHistory username={user.username} onClose={() => setHistoryOpen(false)}/>} 
+    {historyOpen && <AdminHistory username={user.username} onClose={() => setHistoryOpen(false)}/>}
+    {pdfLibraryOpen && <PdfLibrary onClose={() => setPdfLibraryOpen(false)}/>} 
     {inboxOpen && <AdminInbox adminName={user.username} onClose={() => setInboxOpen(false)} onChanged={setUnreadFeedback}/>} 
   </div>;
+}
+
+function PdfLibrary({ onClose }) {
+  const [query, setQuery] = useState("");
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const load = useCallback(() => { setLoading(true); return api(`/api/admin/pdfs?q=${encodeURIComponent(query)}`).then((data) => setItems(data.results || [])).catch((error) => setMessage(error.message)).finally(() => setLoading(false)); }, [query]);
+  useEffect(() => { const timer = window.setTimeout(load, 180); return () => window.clearTimeout(timer); }, [load]);
+  const remove = async (item) => { if (!window.confirm(`Remove the PDF attached to “${item.title}”?`)) return; try { await api(`/api/admin/documents/${encodeURIComponent(item.id)}/pdf`, { method: "DELETE" }); setMessage("PDF removed."); await load(); } catch (error) { setMessage(error.message); } };
+  return <div className="fixed inset-0 z-[80] flex bg-slate-950/60 p-3 backdrop-blur-sm"><section className="m-auto flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"><header className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="font-bold">PDF library</h2><p className="text-xs text-slate-500">View and remove PDFs attached to Rules and Notifications.</p></div><button onClick={onClose} className="grid size-9 place-items-center rounded hover:bg-slate-100"><X size={19}/></button></header><div className="flex gap-2 border-b bg-slate-50 p-3"><div className="relative min-w-0 flex-1"><Search size={15} className="absolute left-2 top-2.5 text-slate-400"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title or filename" className="w-full rounded border px-8 py-2 text-sm"/></div><button type="button" onClick={load} className="rounded bg-blue-950 px-3 py-2 text-xs font-bold text-white">Refresh</button></div>{message && <p className="px-4 pt-3 text-xs font-semibold text-blue-800">{message}</p>}<div className="min-h-0 flex-1 overflow-y-auto p-4">{loading ? <p className="text-sm text-slate-500">Loading PDFs…</p> : items.length ? <div className="grid gap-2">{items.map((item) => <div key={item.id} className="flex items-center gap-3 rounded-lg border border-slate-200 p-3"><FileText className="shrink-0 text-blue-800" size={20}/><div className="min-w-0 flex-1"><strong className="block truncate text-sm">{item.title}</strong><span className="block truncate text-xs text-slate-500">{item.source_file || item.source_path}</span><span className="text-[11px] uppercase text-slate-400">{item.instrument_type}</span></div><a href={`${apiBaseUrl}/api/documents/${encodeURIComponent(item.id)}/pdf?download=true`} className="rounded border px-2 py-1 text-xs font-bold text-blue-800">Download</a><button type="button" onClick={() => remove(item)} className="rounded border border-red-200 p-2 text-red-700" aria-label={`Remove PDF from ${item.title}`}><Trash2 size={15}/></button></div>)}</div> : <div className="rounded border border-dashed p-8 text-center text-sm text-slate-500">No attached PDFs found.</div>}</div></section></div>;
 }
 
 function AdminHistory({ username, onClose }) {
