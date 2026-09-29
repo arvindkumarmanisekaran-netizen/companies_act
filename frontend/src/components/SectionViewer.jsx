@@ -922,7 +922,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           <button type="button" onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close document details">
             <X size={20} />
           </button>
-          {adminMode && (!isNotification || creating || !hasPdfSource) && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft?.title?.trim()} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => creating ? onClose() : setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white">Edit</button>)}
+          {adminMode && (!isNotification || creating || !hasPdfSource) && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft?.title?.trim() || (creating && isNotification && !pendingPdfFile && !pendingPdfSourceId)} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => creating ? onClose() : setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white">Edit</button>)}
         </header>
         <div className="max-h-[55vh] shrink-0 space-y-4 overflow-y-auto p-4 text-sm text-slate-700">
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
@@ -938,13 +938,14 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
               <button type="button" onClick={() => setShowAddReference((value) => !value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">{showAddReference ? "Hide PDF search" : "Use existing PDF"}</button>
               {pdfBusy && <span className="text-xs text-slate-500">Working…</span>}
               {!document?.id && <span className="text-xs text-slate-500">Select a PDF now; it will attach when you save.</span>}
+              {creating && isNotification && !stagedPdfName && <span className="text-xs font-semibold text-amber-700">A PDF is required for a notification.</span>}
             </div>
             {showAddReference && <div className="mt-2 flex flex-wrap gap-2"><input value={pdfQuery} onChange={(event) => setPdfQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && searchPdfDocuments()} placeholder="Search documents with PDFs" className="min-w-56 flex-1 rounded border border-slate-300 px-2 py-1.5 text-xs"/><button type="button" onClick={searchPdfDocuments} className="rounded bg-blue-950 px-3 py-1.5 text-xs font-bold text-white">Search</button></div>}
             {pdfResults.length > 0 && <div className="mt-2 grid gap-1">{pdfResults.map((result) => <button key={result.id} type="button" onClick={() => attachExistingPdf(result.id)} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-left text-xs hover:bg-blue-50"><strong className="block">{result.publication_date ? `${result.publication_date} — ` : ""}{result.source_file || result.source_path?.split("/").pop() || result.title}</strong><span className="text-slate-500">{result.source_file || result.source_path?.split("/").pop() || result.title}</span></button>)}</div>}
             {showAddReference && !pdfBusy && pdfQuery.trim() && !pdfResults.length && <p className="mt-2 text-xs text-slate-500">No documents with an attached PDF found.</p>}
           </div>}
         </div>
-        {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && hasPdfSource ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
+        {editing && !(creating && isNotification) ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && hasPdfSource ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
             {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text ?? draft?.full_text ?? "No converted text is available for this document."}/></div>}
           </div>
