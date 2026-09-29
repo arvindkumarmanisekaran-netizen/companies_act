@@ -789,6 +789,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   });
   const targetProvisionId = context?.targetProvisionId;
   const initialDocumentId = context?.initialDocumentId;
+  const creating = Boolean(context?.create);
   const [activeIndex, setActiveIndex] = useState(0);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -799,7 +800,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const [loadingText, setLoadingText] = useState(false);
   const [showAddReference, setShowAddReference] = useState(false);
   const relationship = relationships?.[activeIndex];
-  const document = relationship?.document;
+  const document = creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document;
   const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
   const pdfUrl = document?.id
     ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf`
@@ -815,6 +816,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     setActiveIndex(index >= 0 ? index : 0);
   }, [initialDocumentId, relationships.map((item) => item.document?.id).join(",")]);
   useEffect(() => {
+    if (creating) { setEditing(true); setDraft({ title: "", full_text: "" }); setLoadingText(false); return undefined; }
     setEditing(false); setDraft(null); setMessage("");
     if (!document?.id) return;
     let cancelled = false;
@@ -833,7 +835,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     });
     if (isNotification && pdfUrl) { const pdfs = readLru(PDF_CACHE_KEY).filter((url) => url !== pdfUrl); writeLru(PDF_CACHE_KEY, [...pdfs, pdfUrl], 5); fetch(pdfUrl, { cache: "force-cache" }).catch(() => {}); }
     return () => { cancelled = true; };
-  }, [activeIndex, adminMode, document?.id, relationships.map((item) => item.document?.id).join(",")]);
+  }, [activeIndex, adminMode, document?.id, creating, relationships.map((item) => item.document?.id).join(",")]);
 
   const activeDocument = documentData[document?.id];
   const documentFamilyKey = (value) => String(value || "").toLowerCase().replace(/\b(amendment|notification|order|rules?|regulations?|\d{4})\b/g, "").replace(/[^a-z0-9]+/g, "");
@@ -845,9 +847,10 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     .at(-1);
 
   const saveDocument = async () => {
-    const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(document.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
+    const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: isNotification ? "notification" : "rules", provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
+    if (creating) { setEditing(false); setMessage("Saved."); onChanged?.(); return; }
     document.title = payload.title; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.();
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
@@ -878,7 +881,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           <button type="button" onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close document details">
             <X size={20} />
           </button>
-          {adminMode && !isNotification && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} disabled={!activeDocument} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Edit</button>)}
+          {adminMode && (!isNotification || creating) && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft?.title?.trim()} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => creating ? onClose() : setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} disabled={!activeDocument} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Edit</button>)}
         </header>
         <div className="max-h-[55vh] shrink-0 space-y-4 overflow-y-auto p-4 text-sm text-slate-700">
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
@@ -1312,7 +1315,7 @@ const AnchoredText = ({ text = "", callouts = [], provisionId, adminMode, onOpen
 };
 
 const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false, onChanged, targetProvisionId }) => {
-  const addCustom = async () => { const title = window.prompt(`Title for custom ${label.toLowerCase()}:`); if (!title?.trim()) return; const full_text = window.prompt("Text:") || ""; const response = await adminFetch("/api/admin/documents", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: title.trim(), full_text, instrument_type: label === "Notifications" ? "notification" : "rules", provision_id: targetProvisionId || relationships[0]?.target_provision_id }) }); if (!response.ok) window.alert("Unable to add document"); else onChanged?.(); };
+  const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id });
   if (!relationships.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center"><FileText className="mx-auto mb-3 text-slate-400"/><h4 className="font-bold text-slate-800">No {label.toLowerCase()} linked to this section</h4>{adminMode && <button type="button" onClick={addCustom} className="mt-3 rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white">+ Add {label}</button>}</div>;
   return <div className="space-y-3">{adminMode && <button type="button" onClick={addCustom} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white">+ Add {label}</button>}<div className="grid gap-3">{relationships.map((relationship) => <div key={relationship.relationship_id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => onOpen({ relationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id })} className="min-w-0 flex-1 text-left"><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{relationship.document.instrument_type || "Document"}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && String(relationship.document?.id || "").startsWith("custom:") && <button type="button" onClick={async () => { if (!window.confirm("Delete this custom document?")) return; const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(relationship.document.id)}`, { method: "DELETE" }); if (response.ok) onChanged?.(); }} className="text-xs font-bold text-red-700">Delete</button>}</div>)}</div></div>;
 };
