@@ -809,6 +809,13 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pendingPdfFile, setPendingPdfFile] = useState(null);
   const [pendingPdfSourceId, setPendingPdfSourceId] = useState("");
+  const [pendingPdfPreviewUrl, setPendingPdfPreviewUrl] = useState("");
+  useEffect(() => {
+    if (!pendingPdfFile) { setPendingPdfPreviewUrl(""); return undefined; }
+    const url = URL.createObjectURL(pendingPdfFile);
+    setPendingPdfPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [pendingPdfFile]);
   const relationship = relationships?.[activeIndex];
   const document = createdDocument || (creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document);
   const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
@@ -818,10 +825,11 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const pdfUrl = document?.id
     ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf?v=${encodeURIComponent(pdfVersion)}`
     : "";
+  const previewPdfUrl = pendingPdfPreviewUrl || (pendingPdfSourceId ? `${apiBaseUrl}/api/documents/${encodeURIComponent(pendingPdfSourceId)}/pdf` : pdfUrl);
   const pdfSource = {
     file: document?.id || "document.pdf",
     label: document?.title || "Original document",
-    url: pdfUrl,
+    url: previewPdfUrl,
   };
 
   useEffect(() => {
@@ -945,7 +953,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
             {showAddReference && !pdfBusy && pdfQuery.trim() && !pdfResults.length && <p className="mt-2 text-xs text-slate-500">No documents with an attached PDF found.</p>}
           </div>}
         </div>
-        {editing && !(creating && isNotification) ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && hasPdfSource ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
+        {editing && !(creating && isNotification) ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && (hasPdfSource || pendingPdfPreviewUrl || pendingPdfSourceId) ? <ContinuousPdfViewer key={previewPdfUrl} source={pdfSource} /> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
             {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text ?? draft?.full_text ?? "No converted text is available for this document."}/></div>}
           </div>
