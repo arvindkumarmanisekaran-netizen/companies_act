@@ -1804,7 +1804,7 @@ export const SectionCard = ({
     ...(timelineData?.section_relationships || []),
     ...timelineNodes.flatMap((node) => node.relationships || []),
   ]);
-  const instrument = (relationship) => String(relationship.document?.instrument_type || "").toLowerCase();
+  const instrument = (relationship) => String(relationship.document?.instrument_type || (relationship.metadata?.custom ? "rules" : "")).toLowerCase();
   const categorizedDocuments = {
     Rules: allRelationships.filter((item) => instrument(item).includes("rule")),
     Notifications: allRelationships.filter((item) => /(form|notification|order|circular)/.test(instrument(item))),
