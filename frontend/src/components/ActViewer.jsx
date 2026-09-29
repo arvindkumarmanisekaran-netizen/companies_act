@@ -664,7 +664,8 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
           </form>
 
           {searchTerm.trim().length >= 2 && (
-            <div id="navigation-search-results" role="listbox" className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+            <div id="navigation-search-results" role="listbox" className="mt-2 max-h-72 overflow-y-auto rounded-xl border-2 border-blue-200 bg-white shadow-lg">
+              <div className="border-b border-blue-100 bg-blue-50 px-3 py-2 text-xs font-extrabold uppercase tracking-wide text-blue-900">Search results</div>
               {navigationSearching && !visibleSearchResults.length && <div className="px-3 py-2.5 text-xs font-semibold text-slate-500">Finding the best section…</div>}
               {!navigationSearching && !visibleSearchResults.length && <div className="px-3 py-2.5 text-xs font-semibold text-slate-500">No matching sections found.</div>}
               {visibleSearchResults.map((result) => (
