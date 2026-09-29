@@ -41,7 +41,8 @@ const chapterSectionRange = (chapter) => {
 
 const chapterDisplayLabel = (chapter) => {
   const range = chapterSectionRange(chapter);
-  return `Chapter ${chapter?.chapter_number || ""}${range ? ` (Sections ${range})` : ""}`;
+  const number = String(chapter?.chapter_number || "").replace(/^chapter\s+/i, "").trim();
+  return `Chapter ${number}${range ? ` (Sections ${range})` : ""}`;
 };
 
 const sectionDisplayTitle = (section) => {
