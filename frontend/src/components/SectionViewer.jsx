@@ -1322,11 +1322,34 @@ const AnchoredText = ({ text = "", callouts = [], provisionId, adminMode, onOpen
 const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false, onChanged, onCountChange, targetProvisionId }) => {
   const [removeMode, setRemoveMode] = useState(false);
   const [removedIds, setRemovedIds] = useState(() => new Set());
-  const visibleRelationships = relationships.filter((relationship) => !removedIds.has(relationship.relationship_id));
+  const [orderedRelationships, setOrderedRelationships] = useState(relationships);
+  useEffect(() => {
+    setOrderedRelationships(relationships);
+    setRemovedIds(new Set());
+  }, [relationships]);
+  const visibleRelationships = orderedRelationships.filter((relationship) => !removedIds.has(relationship.relationship_id));
   const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id, onCreated: () => onCountChange?.(1) });
+  const moveRelationship = async (index, direction) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= visibleRelationships.length) return;
+    const next = [...visibleRelationships];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    setOrderedRelationships(next);
+    try {
+      const responses = await Promise.all(next.map((relationship, sortOrder) => adminFetch(`/api/admin/relationships/${relationship.relationship_id}/order`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sort_order: sortOrder }),
+      })));
+      if (responses.some((response) => !response.ok)) throw new Error("Unable to save order");
+    } catch (error) {
+      setOrderedRelationships(visibleRelationships);
+      window.alert(error.message || "Unable to save order");
+    }
+  };
   const actions = adminMode && <div className="flex flex-wrap gap-2"><button type="button" onClick={addCustom} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white">+ Add {label}</button><button type="button" onClick={() => setRemoveMode((value) => !value)} className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700">{removeMode ? "Done" : `Remove ${label}`}</button></div>;
   if (!visibleRelationships.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center"><FileText className="mx-auto mb-3 text-slate-400"/><h4 className="font-bold text-slate-800">No {label.toLowerCase()} linked to this section</h4>{actions && <div className="mt-3 flex justify-center">{actions}</div>}</div>;
-  return <div className="space-y-3">{actions}<div className="grid gap-3">{visibleRelationships.map((relationship) => <div key={relationship.relationship_id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => { if (!removeMode) onOpen({ relationships: visibleRelationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id }); }} className={`min-w-0 flex-1 text-left ${removeMode ? "cursor-default" : ""}`}><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{readableInstrumentType(relationship.document.instrument_type)}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && removeMode && <button type="button" onClick={async (event) => { event.stopPropagation(); if (!window.confirm("Remove this document from the section?")) return; const response = await adminFetch(`/api/admin/relationships/${relationship.relationship_id}`, { method: "DELETE" }); if (response.ok) { setRemovedIds((current) => new Set([...current, relationship.relationship_id])); onCountChange?.(-1); } }} className="text-xs font-bold text-red-700">Remove</button>}</div>)}</div></div>;
+  return <div className="space-y-3">{actions}<div className="grid gap-3">{visibleRelationships.map((relationship, index) => <div key={relationship.relationship_id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => { if (!removeMode) onOpen({ relationships: visibleRelationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id }); }} className={`min-w-0 flex-1 text-left ${removeMode ? "cursor-default" : ""}`}><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{readableInstrumentType(relationship.document.instrument_type)}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && !removeMode && <div className="flex shrink-0 items-center gap-1"><button type="button" aria-label={`Move ${relationship.document.title} up`} title="Move up" disabled={index === 0} onClick={() => moveRelationship(index, -1)} className="rounded border border-slate-300 px-2 py-1 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-30">↑</button><button type="button" aria-label={`Move ${relationship.document.title} down`} title="Move down" disabled={index === visibleRelationships.length - 1} onClick={() => moveRelationship(index, 1)} className="rounded border border-slate-300 px-2 py-1 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-30">↓</button></div>}{adminMode && removeMode && <button type="button" onClick={async (event) => { event.stopPropagation(); if (!window.confirm("Remove this document from the section?")) return; const response = await adminFetch(`/api/admin/relationships/${relationship.relationship_id}`, { method: "DELETE" }); if (response.ok) { setRemovedIds((current) => new Set([...current, relationship.relationship_id])); onCountChange?.(-1); } }} className="text-xs font-bold text-red-700">Remove</button>}</div>)}</div></div>;
 };
 
 const normalizeIdentifier = (value) =>
