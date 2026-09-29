@@ -1337,8 +1337,10 @@ const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false
       const additions = relationships.filter((relationship) => !currentIds.has(relationship.relationship_id));
       return [...preserved, ...additions];
     });
-    setRemovedIds((current) => new Set([...current].filter((id) => relationships.some((relationship) => relationship.relationship_id === id))));
   }, [relationshipSignature]);
+  useEffect(() => {
+    setRemovedIds(new Set());
+  }, [targetProvisionId, label]);
   const visibleRelationships = orderedRelationships.filter((relationship) => !removedIds.has(relationship.relationship_id));
   const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id, onCreated: () => onCountChange?.(1) });
   const moveRelationship = async (index, direction) => {
