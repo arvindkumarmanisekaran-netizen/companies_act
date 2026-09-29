@@ -757,7 +757,7 @@ const applyDocumentFormat = (value, start, end, format) => {
   return `${value.slice(0, start)}${open}${value.slice(start, end)}${close}${value.slice(end)}`;
 };
 const markupToHtml = (value) => String(value || "").replace(/\[\[(bold|italic|underline|strike|highlight-([a-z0-9]+))\]\]/g, (_, type, color) => type === "bold" ? "<strong>" : type === "italic" ? "<em>" : type === "underline" ? "<u>" : type === "strike" ? "<s>" : `<mark style="background-color:#${color}">`).replace(/\[\[\/(bold|italic|underline|strike|highlight-[a-z0-9]+)\]\]/g, (_, type) => type === "bold" ? "</strong>" : type === "italic" ? "</em>" : type === "underline" ? "</u>" : type === "strike" ? "</s>" : "</mark>").replace(/\[\[\/?[^\]]+\]\]/g, "");
-const htmlToMarkup = (html) => String(html || "").replace(/<strong>([\s\S]*?)<\/strong>/gi, "[[bold]]$1[[/bold]]").replace(/<em>([\s\S]*?)<\/em>/gi, "[[italic]]$1[[/italic]]").replace(/<u>([\s\S]*?)<\/u>/gi, "[[underline]]$1[[/underline]]").replace(/<s>([\s\S]*?)<\/s>|<strike>([\s\S]*?)<\/strike>/gi, (_, a, b) => `[[strike]]${a || b}[[/strike]]`).replace(/<mark[^>]*background-color:\s*([^;"']+)[^>]*>([\s\S]*?)<\/mark>/gi, (_, color, content) => `[[highlight-${color.replace("#", "")}]]${content}[[/highlight-${color.replace("#", "")}]]`).replace(/<div>/gi, "\n").replace(/<br\s*\/?\s*>/gi, "\n").replace(/<[^>]+>/g, "");
+const htmlToMarkup = (html) => String(html || "").replace(/<(?:strong|b)>([\s\S]*?)<\/(?:strong|b)>/gi, "[[bold]]$1[[/bold]]").replace(/<(?:em|i)>([\s\S]*?)<\/(?:em|i)>/gi, "[[italic]]$1[[/italic]]").replace(/<u>([\s\S]*?)<\/u>/gi, "[[underline]]$1[[/underline]]").replace(/<(?:s|strike|del)>([\s\S]*?)<\/(?:s|strike|del)>/gi, "[[strike]]$1[[/strike]]").replace(/<(?:mark|span)[^>]*background-color:\s*(?:rgb\((\d+),\s*(\d+),\s*(\d+)\)|([^;"']+))[^>]*>([\s\S]*?)<\/(?:mark|span)>/gi, (_, r, g, b, hex, content) => `[[highlight-${hex ? hex.replace("#", "") : [r, g, b].map((part) => Number(part).toString(16).padStart(2, "0")).join("")}]]${content}[[/highlight-${hex ? hex.replace("#", "") : [r, g, b].map((part) => Number(part).toString(16).padStart(2, "0")).join("")}]]`).replace(/<div>/gi, "\n").replace(/<br\s*\/?\s*>/gi, "\n").replace(/<[^>]+>/g, "");
 const DOCUMENT_HIGHLIGHT_COLORS = [["Yellow", "#fff59d"], ["Green", "#b9f6ca"], ["Blue", "#bbdefb"], ["Red", "#ffcdd2"], ["Pink", "#f8bbd0"], ["Purple", "#d1c4e9"], ["Orange", "#ffcc80"], ["Gray", "#eeeeee"]];
 const RichTextToolbar = ({ onFormat, onColor }) => <div className="sticky top-0 z-20 flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-blue-200 bg-blue-50 p-2 shadow-sm">
   {DOCUMENT_FORMATS.map(([format, Icon]) => <button key={format} type="button" title={format} aria-label={format} onMouseDown={(event) => { event.preventDefault(); onFormat(format); }} className="grid size-8 place-items-center rounded border border-blue-200 bg-white text-slate-700 hover:bg-blue-100"><Icon size={15}/></button>)}
@@ -1540,6 +1540,9 @@ export const SectionCard = ({
     return readReaderCache(cacheKey)?.data || null;
   });
   const [activeDocuments, setActiveDocuments] = useState(null);
+  const documentScrollRef = useRef(0);
+  const openDocuments = (context) => { documentScrollRef.current = window.scrollY; setActiveDocuments(context); };
+  const closeDocuments = () => { setActiveDocuments(null); requestAnimationFrame(() => window.scrollTo({ top: documentScrollRef.current, behavior: "auto" })); };
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [adminRecord, setAdminRecord] = useState(null);
   const [adminDraft, setAdminDraft] = useState("");
@@ -1888,7 +1891,7 @@ export const SectionCard = ({
                   subsection={subsection}
                   historicalVersions={group.historical}
                   onOpenAmendment={openAmendment}
-                  onOpenDocument={setActiveDocuments}
+                  onOpenDocument={openDocuments}
                   editing={adminMode && adminEditing}
                   onTextChange={(id, value) => setAdminChanges((changes) => ({ ...changes, [id]: value }))}
                   draftTexts={adminChanges}
@@ -1906,7 +1909,7 @@ export const SectionCard = ({
         )}
         {subsectionGroups.length > 0 && <div className="mt-4 border-t border-slate-200 pt-3"><AnchoredText text="" callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></div>}
         </>}
-        {categorizedDocuments[workspaceTab] && <DocumentCategoryPanel relationships={categorizedDocuments[workspaceTab]} label={workspaceTab} targetProvisionId={timelineData?.section?.id} adminMode={adminMode} onCountChange={(delta) => setDocumentCountAdjustments((current) => ({ ...current, [workspaceTab]: (current[workspaceTab] || 0) + delta }))} onChanged={() => setTimelineRefresh((value) => value + 1)} onOpen={setActiveDocuments}/>} 
+        {categorizedDocuments[workspaceTab] && <DocumentCategoryPanel relationships={categorizedDocuments[workspaceTab]} label={workspaceTab} targetProvisionId={timelineData?.section?.id} adminMode={adminMode} onCountChange={(delta) => setDocumentCountAdjustments((current) => ({ ...current, [workspaceTab]: (current[workspaceTab] || 0) + delta }))} onChanged={() => setTimelineRefresh((value) => value + 1)} onOpen={openDocuments}/>} 
         {workspaceTab === "Actionable Insights" && (insightCallouts.length > 0 ? (
           <CalloutList callouts={insightCallouts} provisionId={timelineData?.section?.id} adminMode={adminMode} onChanged={() => setTimelineRefresh((value) => value + 1)} glossary={glossary} asOfDate={asOfDate}/>
         ) : (
@@ -1924,7 +1927,7 @@ export const SectionCard = ({
         <AmendmentPdfModal sources={pdfSources} onClose={() => setPdfSources([])} />
       )}
       {activeDocuments && (
-        <CorpusDocumentModal context={activeDocuments} onClose={() => setActiveDocuments(null)} adminMode={adminMode} onChanged={() => setTimelineRefresh((value) => value + 1)} />
+        <CorpusDocumentModal context={activeDocuments} onClose={closeDocuments} adminMode={adminMode} onChanged={() => setTimelineRefresh((value) => value + 1)} />
       )}
       {activeSectionBulb && <BulbNoteModal note={activeSectionBulb.note} provisionId={activeSectionBulb.provisionId} anchor={activeSectionBulb.anchor} adminMode={adminMode} onClose={() => setActiveSectionBulb(null)} onChanged={() => setTimelineRefresh((value) => value + 1)} glossary={glossary} asOfDate={asOfDate}/>} 
     </>
