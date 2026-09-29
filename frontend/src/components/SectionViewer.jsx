@@ -1323,10 +1323,22 @@ const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false
   const [removeMode, setRemoveMode] = useState(false);
   const [removedIds, setRemovedIds] = useState(() => new Set());
   const [orderedRelationships, setOrderedRelationships] = useState(relationships);
+  // Parent renders can create a fresh relationships array when only the tab
+  // count changes. Track IDs instead of the array identity so a local removal
+  // is not immediately reset and the card stays gone.
+  const relationshipSignature = relationships.map((relationship) => relationship.relationship_id).join(",");
   useEffect(() => {
-    setOrderedRelationships(relationships);
-    setRemovedIds(new Set());
-  }, [relationships]);
+    setOrderedRelationships((current) => {
+      const currentIds = new Set(current.map((relationship) => relationship.relationship_id));
+      const incomingById = new Map(relationships.map((relationship) => [relationship.relationship_id, relationship]));
+      const preserved = current
+        .filter((relationship) => incomingById.has(relationship.relationship_id))
+        .map((relationship) => incomingById.get(relationship.relationship_id));
+      const additions = relationships.filter((relationship) => !currentIds.has(relationship.relationship_id));
+      return [...preserved, ...additions];
+    });
+    setRemovedIds((current) => new Set([...current].filter((id) => relationships.some((relationship) => relationship.relationship_id === id))));
+  }, [relationshipSignature]);
   const visibleRelationships = orderedRelationships.filter((relationship) => !removedIds.has(relationship.relationship_id));
   const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id, onCreated: () => onCountChange?.(1) });
   const moveRelationship = async (index, direction) => {
