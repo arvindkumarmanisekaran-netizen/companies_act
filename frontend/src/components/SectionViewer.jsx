@@ -1157,7 +1157,7 @@ const GlossaryTerm = ({ entry, visibleTerm, popupId, onNavigate, adminMode = fal
   );
 };
 
-const highlightPrescribed = (value, prefix = "prescribed") => String(value || "").split(/(prescribed)/gi).map((part, index) => /^prescribed$/i.test(part) ? <span key={`${prefix}-${index}`} className="font-semibold text-indigo-700">{part}</span> : part);
+const highlightPrescribed = (value, prefix = "prescribed") => String(value || "").split(/(prescribed)/gi).map((part, index) => /^prescribed$/i.test(part) ? <span key={`${prefix}-${index}`} className="font-semibold" style={{ color: "#4f46e5" }}>{part}</span> : part);
 
 const GlossaryText = ({ children, glossary = [], onNavigate, currentProvisionId = null, adminMode = false }) => {
   const text = String(children || "");
