@@ -817,7 +817,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     setActiveIndex(index >= 0 ? index : 0);
   }, [initialDocumentId, relationships.map((item) => item.document?.id).join(",")]);
   useEffect(() => {
-    if (creating) { setEditing(true); setDraft({ title: "", full_text: "", instrument_type: context?.category === "Notifications" ? "notification" : "rules" }); setLoadingText(false); return undefined; }
+    if (creating) { setEditing(true); setDraft({ title: "", full_text: "", instrument_type: "" }); setLoadingText(false); return undefined; }
     setEditing(false); setDraft(null); setMessage("");
     if (!document?.id) return;
     let cancelled = false;
@@ -848,7 +848,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     .at(-1);
 
   const saveDocument = async () => {
-    const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: isNotification ? "notification" : "rules", provision_id: targetProvisionId } : draft) });
+    const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: draft.instrument_type || (context?.category === "Notifications" ? "notification" : "rules"), provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
     if (creating) { setEditing(false); setMessage("Saved."); onChanged?.(); return; }
@@ -877,12 +877,12 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
             <span className="inline-flex rounded bg-blue-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-900">
               {readableInstrumentType(document.instrument_type)}
             </span>
-            {editing ? <><input value={draft?.title || ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="mt-2 w-full rounded border border-blue-300 px-2 py-1 text-base font-bold"/><select value={draft?.instrument_type || "rules"} onChange={(e) => setDraft({ ...draft, instrument_type: e.target.value })} className="mt-2 rounded border border-blue-300 px-2 py-1 text-xs"><option value="rules">Rules</option><option value="amendment_rules">Amendment rules</option><option value="removal_of_difficulties_order">Removal of difficulties order</option><option value="notification">Notification</option><option value="circular">Circular</option></select></> : <h4 className="mt-2 text-base font-extrabold leading-snug text-slate-900">{draft?.title || document.title}</h4>}
+            {editing ? <><input value={draft?.title || ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="mt-2 w-full rounded border border-blue-300 px-2 py-1 text-base font-bold"/><select value={draft?.instrument_type || ""} onChange={(e) => setDraft({ ...draft, instrument_type: e.target.value })} className="mt-2 rounded border border-blue-300 px-2 py-1 text-xs"><option value="">Select type</option><option value="rules">Rules</option><option value="amendment_rules">Amendment rules</option><option value="removal_of_difficulties_order">Removal of difficulties order</option><option value="notification">Notification</option><option value="circular">Circular</option></select></> : <h4 className="mt-2 text-base font-extrabold leading-snug text-slate-900">{draft?.title || document.title}</h4>}
           </div>
           <button type="button" onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close document details">
             <X size={20} />
           </button>
-          {adminMode && (!isNotification || creating) && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft?.title?.trim()} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => creating ? onClose() : setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} disabled={!activeDocument} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Edit</button>)}
+          {adminMode && (!isNotification || creating) && (editing ? <span className="flex gap-2"><button type="button" onClick={saveDocument} disabled={!draft?.title?.trim()} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Save</button><button type="button" onClick={() => creating ? onClose() : setEditing(false)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">Cancel</button></span> : <button type="button" onClick={() => setEditing(true)} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-white">Edit</button>)}
         </header>
         <div className="max-h-[55vh] shrink-0 space-y-4 overflow-y-auto p-4 text-sm text-slate-700">
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
@@ -898,7 +898,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
             {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : earlierDocument ? (
               <CoalescedAmendment currentText={activeDocument?.full_text || ""} earlier={{ text: earlierDocument.full_text, source_note: `${earlierDocument.title || "Earlier document"} (${earlierDocument.publication_date || "previous version"})` }} />
-            ) : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text || "No converted text is available for this document."}/></div>}
+            ) : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text ?? draft?.full_text ?? "No converted text is available for this document."}/></div>}
           </div>
         )}
       </section>
