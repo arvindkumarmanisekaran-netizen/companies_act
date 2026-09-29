@@ -101,6 +101,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
   const [searchTerm, setSearchTerm] = useState("");
   const [searchSubmitted, setSearchSubmitted] = useState(false);
   const [searchHighlightIndex, setSearchHighlightIndex] = useState(0);
+  const [searchHighlightCount, setSearchHighlightCount] = useState(0);
   const [navigationResults, setNavigationResults] = useState([]);
   const [navigationResultQuery, setNavigationResultQuery] = useState("");
   const [navigationSearching, setNavigationSearching] = useState(false);
@@ -505,18 +506,49 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
         }
         fragment.append(textNode.nodeValue.slice(cursor)); textNode.replaceWith(fragment);
       });
+      const marks = [...root.querySelectorAll("mark[data-search-highlight]")];
       setSearchHighlightIndex(0);
-      const first = root.querySelector("mark[data-search-highlight]");
+      setSearchHighlightCount(marks.length);
+      marks.forEach((mark, index) => {
+        mark.dataset.searchHighlightActive = index === 0 ? "true" : "false";
+        mark.style.backgroundColor = index === 0 ? "#f59e0b" : "#fef08a";
+      });
+      const first = marks[0];
       first?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 500);
+    }, 250);
   };
   const navigateSearchHighlight = (direction) => {
     const marks = [...document.querySelectorAll("article.section-content-enter mark[data-search-highlight]")];
     if (!marks.length) return;
     const next = (searchHighlightIndex + direction + marks.length) % marks.length;
     setSearchHighlightIndex(next);
+    setSearchHighlightCount(marks.length);
+    marks.forEach((mark, index) => {
+      mark.dataset.searchHighlightActive = index === next ? "true" : "false";
+      mark.style.backgroundColor = index === next ? "#f59e0b" : "#fef08a";
+    });
     marks[next].scrollIntoView({ behavior: "smooth", block: "center" });
   };
+
+  useEffect(() => {
+    if (!searchSubmitted || !searchTerm.trim()) return undefined;
+    let cancelled = false;
+    let attempts = 0;
+    const apply = () => {
+      if (cancelled) return;
+      const root = document.querySelector("article.section-content-enter");
+      if (root) {
+        highlightSearchInSection(searchTerm.trim());
+        return;
+      }
+      if (attempts < 30) {
+        attempts += 1;
+        window.setTimeout(apply, 100);
+      }
+    };
+    apply();
+    return () => { cancelled = true; };
+  }, [selectedSectionKey, searchSubmitted, searchTerm]);
 
   const runNavigationSearch = async (value) => {
     const query = String(value || "").trim();
@@ -726,7 +758,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
           )}
         </div>
 
-        {searchSubmitted && searchTerm.trim() && <section className="border-b border-blue-200 bg-blue-50 p-3" aria-label="Search results"><div className="mb-2 flex flex-wrap items-center justify-between gap-2"><h2 className="text-xs font-extrabold uppercase tracking-wide text-blue-900">Search results</h2><div className="flex items-center gap-2"><button type="button" onClick={() => navigateSearchHighlight(-1)} className="rounded border border-blue-300 bg-white px-2 py-1 text-[11px] font-bold text-blue-800">Previous</button><span className="text-[11px] font-semibold text-blue-800">{searchHighlightIndex + 1}</span><button type="button" onClick={() => navigateSearchHighlight(1)} className="rounded border border-blue-300 bg-white px-2 py-1 text-[11px] font-bold text-blue-800">Next</button><button type="button" onClick={() => { setSearchTerm(""); setSearchSubmitted(false); setNavigationResults([]); setNavigationResultQuery(""); setSearchHighlightIndex(0); }} className="text-xs font-bold text-blue-800 underline">Clear</button></div></div><div className="max-h-72 overflow-y-auto rounded-lg border border-blue-200 bg-white">{navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">Finding the best section…</p>}{!navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">No matching sections found.</p>}{visibleSearchResults.map((result) => <button key={`submitted-${result.match_type}-${result.section_number}`} type="button" onClick={() => { jumpToSection(result.section_number, result.provision_id, true); highlightSearchInSection(searchTerm.trim()); }} className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-blue-50"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-950 text-xs font-extrabold text-white">{result.section_number}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-900">{result.title || `Section ${result.section_number}`}</strong><span className="block truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{result.match_type} · {result.matched_term}</span></span></button>)}</div></section>}
+        {searchSubmitted && searchTerm.trim() && <section className="border-b border-blue-200 bg-blue-50 p-3" aria-label="Search results"><div className="mb-2 flex items-center justify-between gap-2"><h2 className="text-xs font-extrabold uppercase tracking-wide text-blue-900">Search results</h2><button type="button" onClick={() => { setSearchTerm(""); setSearchSubmitted(false); setNavigationResults([]); setNavigationResultQuery(""); setSearchHighlightIndex(0); setSearchHighlightCount(0); }} className="text-xs font-bold text-blue-800 underline">Clear</button></div><div className="max-h-72 overflow-y-auto rounded-lg border border-blue-200 bg-white">{navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">Finding the best section…</p>}{!navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">No matching sections found.</p>}{visibleSearchResults.map((result) => <button key={`submitted-${result.match_type}-${result.section_number}`} type="button" onClick={() => { jumpToSection(result.section_number, result.provision_id, true); highlightSearchInSection(searchTerm.trim()); }} className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-blue-50"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-950 text-xs font-extrabold text-white">{result.section_number}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-900">{result.title || `Section ${result.section_number}`}</strong><span className="block truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{result.match_type} · {result.matched_term}</span></span></button>)}</div><div className="mt-2 flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-2 py-2"><button type="button" onClick={() => navigateSearchHighlight(-1)} disabled={!searchHighlightCount} className="rounded border border-blue-300 px-3 py-1 text-[11px] font-bold text-blue-800 disabled:cursor-not-allowed disabled:opacity-40">Previous</button><span className="min-w-16 text-center text-[11px] font-semibold text-blue-800">{searchHighlightCount ? `${searchHighlightIndex + 1} of ${searchHighlightCount}` : "0 matches"}</span><button type="button" onClick={() => navigateSearchHighlight(1)} disabled={!searchHighlightCount} className="rounded border border-blue-300 px-3 py-1 text-[11px] font-bold text-blue-800 disabled:cursor-not-allowed disabled:opacity-40">Next</button></div></section>}
 
         <div className="flex min-h-0 flex-1 flex-col p-3">
           <label className="mb-3 block md:hidden">
