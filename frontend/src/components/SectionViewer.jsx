@@ -862,7 +862,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
 
   if (!document) return null;
 
-  return (
+  return createPortal((
     <div
       className="motion-modal-backdrop fixed inset-0 z-[100] grid place-items-center bg-slate-950/60 p-3 backdrop-blur-sm"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
@@ -899,7 +899,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
         )}
       </section>
     </div>
-  );
+  ), globalThis.document.body);
 };
 
 const RelatedDocuments = ({ relationships, onOpen, targetProvisionId }) => {
