@@ -825,7 +825,9 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   }, [initialDocumentId, relationships.map((item) => item.document?.id).join(",")]);
   useEffect(() => {
     if (creating) { setEditing(true); setDraft({ title: "", full_text: "", instrument_type: "" }); setLoadingText(false); return undefined; }
-    setEditing(false); setDraft(null); setMessage("");
+    if (createdDocument) setEditing(true);
+    else { setEditing(false); setDraft(null); }
+    setMessage("");
     if (!document?.id) return;
     let cancelled = false;
     setLoadingText(true);
