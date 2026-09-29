@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, History, Inbox, LogOut, Search, ShieldCheck, Trash2, X } from "lucide-react";
 import ActViewer from "./components/ActViewer";
 import AdminInbox from "./components/AdminInbox";
@@ -63,16 +63,20 @@ function PdfLibrary({ onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const requestSequence = useRef(0);
   const load = useCallback(() => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
+    setItems([]);
     return api(`/api/admin/pdfs?q=${encodeURIComponent(query)}`)
       .then((data) => {
+        if (sequence !== requestSequence.current) return;
         const results = data.results || [];
         results.sort((left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || "")) || String(right.id).localeCompare(String(left.id)));
         setItems(results);
       })
-      .catch((error) => setMessage(error.message))
-      .finally(() => setLoading(false));
+      .catch((error) => { if (sequence === requestSequence.current) setMessage(error.message); })
+      .finally(() => { if (sequence === requestSequence.current) setLoading(false); });
   }, [query]);
   useEffect(() => { const timer = window.setTimeout(load, 180); return () => window.clearTimeout(timer); }, [load]);
   const remove = async (item) => { if (!window.confirm(`Remove the PDF attached to “${item.title}”?`)) return; try { await api(`/api/admin/documents/${encodeURIComponent(item.id)}/pdf`, { method: "DELETE" }); setMessage("PDF removed."); await load(); } catch (error) { setMessage(error.message); } };
