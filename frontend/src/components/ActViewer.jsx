@@ -27,6 +27,7 @@ const apiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/
 const isMobileApp = import.meta.env.VITE_MOBILE_APP === "true";
 const APP_SHARE_URL = "https://companiesact.site";
 const ADMIN_NAMES = new Set(["arv@momo", "nak@momo"]);
+const escapeRegularExpression = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const sectionKey = (chapter, section) =>
   `${chapter.chapter_number || "chapter"}::${section.section_number || "section"}`;
