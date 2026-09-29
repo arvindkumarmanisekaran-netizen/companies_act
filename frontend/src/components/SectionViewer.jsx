@@ -792,7 +792,8 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   });
   const targetProvisionId = context?.targetProvisionId;
   const initialDocumentId = context?.initialDocumentId;
-  const creating = Boolean(context?.create);
+  const [createdDocument, setCreatedDocument] = useState(null);
+  const creating = Boolean(context?.create) && !createdDocument;
   const [activeIndex, setActiveIndex] = useState(0);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(null);
@@ -806,7 +807,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const [pdfResults, setPdfResults] = useState([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const relationship = relationships?.[activeIndex];
-  const document = creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document;
+  const document = createdDocument || (creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document);
   const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
   const hasPdfSource = Boolean(document?.source_path || document?.source_file || documentData[document?.id]?.source_path || documentData[document?.id]?.source_file);
   const pdfUrl = document?.id
@@ -860,7 +861,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: draft.instrument_type || (context?.category === "Notifications" ? "notification" : "rules"), provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
-    if (creating) { context?.onCreated?.(payload); onChanged?.(); onClose(); requestAnimationFrame(() => requestAnimationFrame(restoreScroll)); return; }
+    if (creating) { setCreatedDocument(payload); setDraft({ title: payload.title || draft.title, full_text: draft.full_text || "", instrument_type: payload.instrument_type || draft.instrument_type }); context?.onCreated?.(payload); onChanged?.(); setMessage("Saved. You can now attach a PDF."); requestAnimationFrame(() => requestAnimationFrame(restoreScroll)); return; }
     document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
@@ -905,7 +906,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           >
             Download PDF
           </a>}
-          {adminMode && editing && !creating && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {adminMode && editing && document?.id && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">Upload PDF<input type="file" accept="application/pdf,.pdf" onChange={uploadPdf} disabled={pdfBusy} className="hidden" /></label>
               <button type="button" onClick={() => setShowAddReference((value) => !value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">{showAddReference ? "Hide PDF search" : "Use existing PDF"}</button>
