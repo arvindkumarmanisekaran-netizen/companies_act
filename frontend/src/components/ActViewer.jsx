@@ -485,8 +485,26 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
 
   const highlightSearchInSection = (query) => {
     window.setTimeout(() => {
-      try { window.find?.(query, false, false, true); } catch { /* browser find unavailable */ }
-    }, 350);
+      const root = document.querySelector("article.section-content-enter");
+      if (!root || !query.trim()) return;
+      const matcher = new RegExp(escapeRegularExpression(query.trim()), "gi");
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node.parentElement?.closest("button, input, textarea, script, style, [data-search-highlight]")) continue;
+        if (matcher.test(node.nodeValue || "")) nodes.push(node);
+        matcher.lastIndex = 0;
+      }
+      nodes.forEach((textNode) => {
+        const fragment = document.createDocumentFragment(); let cursor = 0; let match; matcher.lastIndex = 0;
+        while ((match = matcher.exec(textNode.nodeValue || ""))) {
+          fragment.append(textNode.nodeValue.slice(cursor, match.index));
+          const mark = document.createElement("mark"); mark.dataset.searchHighlight = "true"; mark.className = "rounded bg-yellow-200 px-0.5 text-inherit"; mark.textContent = match[0]; fragment.append(mark); cursor = match.index + match[0].length;
+        }
+        fragment.append(textNode.nodeValue.slice(cursor)); textNode.replaceWith(fragment);
+      });
+    }, 500);
   };
 
   const runNavigationSearch = async (value) => {
@@ -697,7 +715,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
           )}
         </div>
 
-        {searchSubmitted && searchTerm.trim() && <section className="border-b border-blue-200 bg-blue-50 p-3" aria-label="Search results"><h2 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-blue-900">Search results</h2><div className="max-h-72 overflow-y-auto rounded-lg border border-blue-200 bg-white">{navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">Finding the best section…</p>}{!navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">No matching sections found.</p>}{visibleSearchResults.map((result) => <button key={`submitted-${result.match_type}-${result.section_number}`} type="button" onClick={() => jumpToSection(result.section_number, result.provision_id)} className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-blue-50"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-950 text-xs font-extrabold text-white">{result.section_number}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-900">{result.title || `Section ${result.section_number}`}</strong><span className="block truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{result.match_type} · {result.matched_term}</span></span></button>)}</div></section>}
+        {searchSubmitted && searchTerm.trim() && <section className="border-b border-blue-200 bg-blue-50 p-3" aria-label="Search results"><div className="mb-2 flex items-center justify-between"><h2 className="text-xs font-extrabold uppercase tracking-wide text-blue-900">Search results</h2><button type="button" onClick={() => { setSearchTerm(""); setSearchSubmitted(false); setNavigationResults([]); setNavigationResultQuery(""); }} className="text-xs font-bold text-blue-800 underline">Clear</button></div><div className="max-h-72 overflow-y-auto rounded-lg border border-blue-200 bg-white">{navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">Finding the best section…</p>}{!navigationSearching && !visibleSearchResults.length && <p className="px-3 py-2 text-xs text-slate-500">No matching sections found.</p>}{visibleSearchResults.map((result) => <button key={`submitted-${result.match_type}-${result.section_number}`} type="button" onClick={() => jumpToSection(result.section_number, result.provision_id)} className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-blue-50"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-blue-950 text-xs font-extrabold text-white">{result.section_number}</span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-900">{result.title || `Section ${result.section_number}`}</strong><span className="block truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">{result.match_type} · {result.matched_term}</span></span></button>)}</div></section>}
 
         <div className="flex min-h-0 flex-1 flex-col p-3">
           <label className="mb-3 block md:hidden">
