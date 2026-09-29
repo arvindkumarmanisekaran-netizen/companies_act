@@ -180,6 +180,16 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
     [chapters],
   );
 
+  const localSearchResults = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    if (query.length < 2) return [];
+    return allSectionEntries
+      .filter(({ chapter, section }) => searchableSectionText(chapter, section).includes(query))
+      .slice(0, 6)
+      .map(({ section }) => ({ section_number: section.section_number, title: section.title, match_type: "Act text", matched_term: searchTerm.trim(), provision_id: section.id }));
+  }, [allSectionEntries, searchTerm]);
+  const visibleSearchResults = navigationResults.length ? navigationResults : localSearchResults;
+
   useEffect(() => {
     const query = searchTerm.trim();
     if (query.length < 2 || /^(?:section\s*)?\d+[A-Za-z]?\.?$/i.test(query)) {
@@ -653,10 +663,11 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
             </label>
           </form>
 
-          {(navigationSearching || navigationResults.length > 0) && searchTerm.trim() && (
+          {searchTerm.trim().length >= 2 && (
             <div id="navigation-search-results" role="listbox" className="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-              {navigationSearching && navigationResults.length === 0 && <div className="px-3 py-2.5 text-xs font-semibold text-slate-500">Finding the best section…</div>}
-              {navigationResults.map((result) => (
+              {navigationSearching && !visibleSearchResults.length && <div className="px-3 py-2.5 text-xs font-semibold text-slate-500">Finding the best section…</div>}
+              {!navigationSearching && !visibleSearchResults.length && <div className="px-3 py-2.5 text-xs font-semibold text-slate-500">No matching sections found.</div>}
+              {visibleSearchResults.map((result) => (
                 <button
                   key={`${result.match_type}-${result.section_number}`}
                   type="button"
