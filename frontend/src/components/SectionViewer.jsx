@@ -1157,6 +1157,8 @@ const GlossaryTerm = ({ entry, visibleTerm, popupId, onNavigate, adminMode = fal
   );
 };
 
+const highlightPrescribed = (value, prefix = "prescribed") => String(value || "").split(/(prescribed)/gi).map((part, index) => /^prescribed$/i.test(part) ? <span key={`${prefix}-${index}`} className="font-semibold text-indigo-700">{part}</span> : part);
+
 const GlossaryText = ({ children, glossary = [], onNavigate, currentProvisionId = null, adminMode = false }) => {
   const text = String(children || "");
   const entries = useMemo(
@@ -1167,13 +1169,14 @@ const GlossaryText = ({ children, glossary = [], onNavigate, currentProvisionId 
     if (!entries.length) return null;
     return new RegExp(`(^|[^A-Za-z0-9])(${entries.map((entry) => escapeRegularExpression(entry.term)).join("|")})(?=$|[^A-Za-z0-9])`, "gi");
   }, [entries]);
-  if (!pattern || !text) return <>{text}</>;
+  if (!text) return null;
+  if (!pattern) return <>{highlightPrescribed(text)}</>;
 
   const byTerm = new Map(entries.map((entry) => [entry.term.toLowerCase(), entry]));
   const parts = []; let cursor = 0; let match;
   while ((match = pattern.exec(text))) {
     const termStart = match.index + match[1].length;
-    if (termStart > cursor) parts.push(text.slice(cursor, termStart));
+    if (termStart > cursor) parts.push(<React.Fragment key={`plain-${cursor}`}>{highlightPrescribed(text.slice(cursor, termStart), `plain-${cursor}`)}</React.Fragment>);
     const visibleTerm = match[2];
     const entry = byTerm.get(visibleTerm.toLowerCase());
     const popupId = `glossary-${entry.provision_id}-${termStart}`;
@@ -1181,7 +1184,7 @@ const GlossaryText = ({ children, glossary = [], onNavigate, currentProvisionId 
     cursor = termStart + visibleTerm.length;
     if (pattern.lastIndex === match.index) pattern.lastIndex += 1;
   }
-  parts.push(text.slice(cursor));
+  parts.push(<React.Fragment key={`plain-${cursor}-end`}>{highlightPrescribed(text.slice(cursor), `plain-${cursor}-end`)}</React.Fragment>);
   return <>{parts}</>;
 };
 
