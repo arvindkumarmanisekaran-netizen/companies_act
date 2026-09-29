@@ -812,6 +812,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const document = createdDocument || (creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document);
   const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
   const hasPdfSource = Boolean(document?.source_path || document?.source_file || documentData[document?.id]?.source_path || documentData[document?.id]?.source_file);
+  const stagedPdfName = pendingPdfFile?.name || (pendingPdfSourceId ? "Existing PDF" : "");
   const pdfVersion = documentData[document?.id]?.source_path || documentData[document?.id]?.source_file || document?.source_path || document?.source_file || "none";
   const pdfUrl = document?.id
     ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf?v=${encodeURIComponent(pdfVersion)}`
@@ -859,6 +860,18 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     .sort((a, b) => String(a.publication_date || a.effective_date || "").localeCompare(String(b.publication_date || b.effective_date || "")))
     .at(-1);
 
+  const savePendingPdf = async (documentId) => {
+    if (!pendingPdfFile && !pendingPdfSourceId) return null;
+    const response = pendingPdfFile
+      ? await adminFetch(`/api/admin/documents/${encodeURIComponent(documentId)}/pdf`, { method: "PUT", headers: { "Content-Type": "application/pdf", "X-Filename": pendingPdfFile.name }, body: pendingPdfFile })
+      : await adminFetch(`/api/admin/documents/${encodeURIComponent(documentId)}/pdf-reference`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_document_id: pendingPdfSourceId }) });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || "PDF attachment failed");
+    setDocumentData((current) => ({ ...current, [documentId]: { ...(current[documentId] || {}), ...payload } }));
+    setPendingPdfFile(null); setPendingPdfSourceId("");
+    return payload;
+  };
+
   const saveDocument = async () => {
     const scrollElement = globalThis.document.querySelector("main.overflow-y-auto");
     const savedScrollY = scrollElement?.scrollTop ?? window.scrollY;
@@ -882,12 +895,13 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
       if (!pendingPdfFile && !pendingPdfSourceId) setMessage("Saved. You can attach a PDF now.");
       requestAnimationFrame(() => requestAnimationFrame(restoreScroll)); return;
     }
+    try { await savePendingPdf(document.id); } catch (error) { return setMessage(error.message); }
     document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
   const searchPdfDocuments = async () => { if (!pdfQuery.trim()) return; setPdfBusy(true); const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(pdfQuery.trim())}`); const payload = await response.json().catch(() => ({})); setPdfResults((payload.results || []).filter((result) => result.source_path || result.source_file)); setPdfBusy(false); };
-  const attachExistingPdf = async (sourceDocumentId) => { if (!document?.id) { setPendingPdfSourceId(sourceDocumentId); setPendingPdfFile(null); setMessage("Existing PDF selected. Save the document to attach it."); setPdfResults([]); return; } setPdfBusy(true); const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(document.id)}/pdf-reference`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_document_id: sourceDocumentId }) }); const payload = await response.json().catch(() => ({})); setPdfBusy(false); if (!response.ok) return setMessage(payload.detail || "Unable to attach PDF"); setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload } })); setPdfResults([]); setPdfQuery(""); setMessage("PDF attached."); };
-  const uploadPdf = async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (!document?.id) { setPendingPdfFile(file); setPendingPdfSourceId(""); setMessage("PDF selected. Save the document to upload it."); return; } setPdfBusy(true); const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(document.id)}/pdf`, { method: "PUT", headers: { "Content-Type": "application/pdf", "X-Filename": file.name }, body: file }); const payload = await response.json().catch(() => ({})); setPdfBusy(false); if (!response.ok) return setMessage(payload.detail || "Unable to upload PDF"); setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload } })); setMessage("PDF uploaded."); };
+  const attachExistingPdf = async (sourceDocumentId) => { setPendingPdfSourceId(sourceDocumentId); setPendingPdfFile(null); setPdfResults([]); setPdfQuery(""); setMessage("Existing PDF attached. Click Save to apply it."); };
+  const uploadPdf = async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setPendingPdfFile(file); setPendingPdfSourceId(""); setMessage("PDF attached. Click Save to upload it."); };
   const removePdf = async () => { if (!document?.id || !window.confirm("Remove the attached PDF?")) return; setPdfBusy(true); const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(document.id)}/pdf`, { method: "DELETE" }); const payload = await response.json().catch(() => ({})); setPdfBusy(false); if (!response.ok) return setMessage(payload.detail || "Unable to remove PDF"); setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload } })); setMessage("PDF removed. You can attach a replacement."); };
   const addReference = async (documentId) => { const response = await adminFetch("/api/admin/relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document_id: documentId, provision_id: targetProvisionId, relationship_type: "references" }) }); const payload = await response.json().catch(() => ({})); if (!response.ok) return setMessage(payload.detail || "Unable to add reference"); onChanged?.(); onClose(); };
   const removeReference = async (id) => { if (!window.confirm("Remove this PDF reference?")) return; const response = await adminFetch(`/api/admin/relationships/${id}`, { method: "DELETE" }); if (!response.ok) return setMessage("Unable to remove reference"); onChanged?.(); onClose(); };
@@ -924,7 +938,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           {(documentData[document?.id]?.source_path || documentData[document?.id]?.source_file) && <div className="flex flex-wrap items-center gap-2">
             <a href={`${pdfUrl}&download=true`} className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-blue-950 px-4 text-sm font-semibold text-white">Download PDF</a>
             {adminMode && editing && <button type="button" onClick={removePdf} disabled={pdfBusy} className="inline-flex min-h-10 items-center rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 disabled:opacity-50">Remove PDF</button>}
-            {adminMode && editing && <span className="text-xs text-slate-500">Attached: {documentData[document?.id]?.source_file || documentData[document?.id]?.source_path}</span>}
+            {adminMode && editing && (hasPdfSource || stagedPdfName) && <span className="text-xs text-slate-500">Attached: {stagedPdfName || documentData[document?.id]?.source_file || documentData[document?.id]?.source_path}</span>}
           </div>}
           {adminMode && editing && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex flex-wrap items-center gap-2">
