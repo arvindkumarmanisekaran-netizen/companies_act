@@ -63,7 +63,17 @@ function PdfLibrary({ onClose }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const load = useCallback(() => { setLoading(true); return api(`/api/admin/pdfs?q=${encodeURIComponent(query)}`).then((data) => setItems((data.results || []).sort((left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || "")) || String(right.id).localeCompare(String(left.id)))).catch((error) => setMessage(error.message)).finally(() => setLoading(false)); }, [query]);
+  const load = useCallback(() => {
+    setLoading(true);
+    return api(`/api/admin/pdfs?q=${encodeURIComponent(query)}`)
+      .then((data) => {
+        const results = data.results || [];
+        results.sort((left, right) => String(right.updated_at || "").localeCompare(String(left.updated_at || "")) || String(right.id).localeCompare(String(left.id)));
+        setItems(results);
+      })
+      .catch((error) => setMessage(error.message))
+      .finally(() => setLoading(false));
+  }, [query]);
   useEffect(() => { const timer = window.setTimeout(load, 180); return () => window.clearTimeout(timer); }, [load]);
   const remove = async (item) => { if (!window.confirm(`Remove the PDF attached to “${item.title}”?`)) return; try { await api(`/api/admin/documents/${encodeURIComponent(item.id)}/pdf`, { method: "DELETE" }); setMessage("PDF removed."); await load(); } catch (error) { setMessage(error.message); } };
   const insert = async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; try { const title = file.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " "); await api("/api/admin/pdfs", { method: "POST", headers: { "Content-Type": "application/pdf", "X-Filename": file.name, "X-Title": title, "X-Instrument-Type": "rules" }, body: file }); setMessage("PDF inserted into the library."); await load(); } catch (error) { setMessage(error.message); } };
