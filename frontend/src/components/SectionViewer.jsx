@@ -852,7 +852,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: draft.instrument_type || (context?.category === "Notifications" ? "notification" : "rules"), provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
-    if (creating) { setEditing(false); setMessage("Saved."); onChanged?.(); return; }
+    if (creating) { setEditing(false); setMessage("Saved."); context?.onCreated?.(); onChanged?.(); return; }
     document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.();
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
@@ -1320,7 +1320,7 @@ const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false
   const [removeMode, setRemoveMode] = useState(false);
   const [removedIds, setRemovedIds] = useState(() => new Set());
   const visibleRelationships = relationships.filter((relationship) => !removedIds.has(relationship.relationship_id));
-  const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id });
+  const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id, onCreated: () => onCountChange?.(1) });
   const actions = adminMode && <div className="flex flex-wrap gap-2"><button type="button" onClick={addCustom} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white">+ Add {label}</button><button type="button" onClick={() => setRemoveMode((value) => !value)} className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700">{removeMode ? "Done" : `Remove ${label}`}</button></div>;
   if (!visibleRelationships.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center"><FileText className="mx-auto mb-3 text-slate-400"/><h4 className="font-bold text-slate-800">No {label.toLowerCase()} linked to this section</h4>{actions && <div className="mt-3 flex justify-center">{actions}</div>}</div>;
   return <div className="space-y-3">{actions}<div className="grid gap-3">{visibleRelationships.map((relationship) => <div key={relationship.relationship_id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => { if (!removeMode) onOpen({ relationships: visibleRelationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id }); }} className={`min-w-0 flex-1 text-left ${removeMode ? "cursor-default" : ""}`}><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{readableInstrumentType(relationship.document.instrument_type)}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && removeMode && <button type="button" onClick={async (event) => { event.stopPropagation(); if (!window.confirm("Remove this document from the section?")) return; const response = await adminFetch(`/api/admin/relationships/${relationship.relationship_id}`, { method: "DELETE" }); if (response.ok) { setRemovedIds((current) => new Set([...current, relationship.relationship_id])); onCountChange?.(-1); } }} className="text-xs font-bold text-red-700">Remove</button>}</div>)}</div></div>;
@@ -1551,6 +1551,7 @@ export const SectionCard = ({
   const [timelineRefresh, setTimelineRefresh] = useState(0);
   const [workspaceTab, setWorkspaceTab] = useState("Act");
   const [documentCountAdjustments, setDocumentCountAdjustments] = useState({});
+  useEffect(() => { setDocumentCountAdjustments({}); }, [timelineRefresh]);
   const [activeSectionBulb, setActiveSectionBulb] = useState(null);
   const [glossary, setGlossary] = useState([]);
   useEffect(() => {
@@ -1807,9 +1808,9 @@ export const SectionCard = ({
     ...(timelineData?.section_relationships || []),
     ...timelineNodes.flatMap((node) => node.relationships || []),
   ]);
-  const instrument = (relationship) => String(relationship.document?.instrument_type || (relationship.metadata?.custom ? "rules" : "")).toLowerCase();
+  const instrument = (relationship) => String(relationship.document?.instrument_type || "").toLowerCase();
   const categorizedDocuments = {
-    Rules: allRelationships.filter((item) => instrument(item).includes("rule") || item.metadata?.custom),
+    Rules: allRelationships.filter((item) => instrument(item).includes("rule")),
     Notifications: allRelationships.filter((item) => /(form|notification|order|circular)/.test(instrument(item))),
   };
   const insightCallouts = [
