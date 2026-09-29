@@ -31,6 +31,19 @@ const ADMIN_NAMES = new Set(["arv@momo", "nak@momo"]);
 const sectionKey = (chapter, section) =>
   `${chapter.chapter_number || "chapter"}::${section.section_number || "section"}`;
 
+const chapterSectionRange = (chapter) => {
+  const sections = (chapter?.sections || [])
+    .map((section) => String(section?.section_number || "").trim())
+    .filter(Boolean);
+  if (!sections.length) return "";
+  return sections.length === 1 ? sections[0] : `${sections[0]} to ${sections[sections.length - 1]}`;
+};
+
+const chapterDisplayLabel = (chapter) => {
+  const range = chapterSectionRange(chapter);
+  return `Chapter ${chapter?.chapter_number || ""}${range ? ` (Sections ${range})` : ""}`;
+};
+
 const sectionDisplayTitle = (section) => {
   const sectionNumber = String(section?.section_number || "");
   const escapedSectionNumber = sectionNumber.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -673,7 +686,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
             <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Chapter</span>
             <select value={selectedChapter || ""} onChange={(event) => chooseChapter(event.target.value || null)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-bold text-slate-800 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100">
               <option value="">All chapters</option>
-              {chapters.map((chapter) => <option key={chapter.chapter_number} value={chapter.chapter_number}>{chapter.chapter_number} — {chapter.chapter_title}</option>)}
+              {chapters.map((chapter) => <option key={chapter.chapter_number} value={chapter.chapter_number}>{chapterDisplayLabel(chapter)}</option>)}
             </select>
           </label>
 
@@ -711,7 +724,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
                 }`}
               >
                 <span className="block text-xs font-bold uppercase tracking-wide">
-                  {chapter.chapter_number}
+                  {chapterDisplayLabel(chapter)}
                 </span>
                 <span
                   className={`mt-0.5 block truncate text-sm ${
