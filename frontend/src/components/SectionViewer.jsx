@@ -1657,8 +1657,8 @@ export const SectionCard = ({
         card.scrollIntoView({ behavior: "smooth", block: "center" });
         card.classList.add("ring-2", "ring-emerald-400");
         window.setTimeout(() => card.classList.remove("ring-2", "ring-emerald-400"), 1800);
+        setFocusDocumentId(null);
       }
-      setFocusDocumentId(null);
     }, 120);
     return () => window.clearTimeout(timer);
   }, [timelineData, timelineLoading, focusDocumentId]);
