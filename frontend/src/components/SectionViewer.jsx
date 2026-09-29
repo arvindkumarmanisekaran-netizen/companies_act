@@ -756,6 +756,8 @@ const applyDocumentFormat = (value, start, end, format) => {
   const open = `[[${format}]]`; const close = `[[/${format}]]`;
   return `${value.slice(0, start)}${open}${value.slice(start, end)}${close}${value.slice(end)}`;
 };
+const markupToHtml = (value) => String(value || "").replace(/\[\[(bold|italic|underline|strike|highlight-([a-z0-9]+))\]\]/g, (_, type, color) => type === "bold" ? "<strong>" : type === "italic" ? "<em>" : type === "underline" ? "<u>" : type === "strike" ? "<s>" : `<mark style="background-color:#${color}">`).replace(/\[\[\/(bold|italic|underline|strike|highlight-[a-z0-9]+)\]\]/g, (_, type) => type === "bold" ? "</strong>" : type === "italic" ? "</em>" : type === "underline" ? "</u>" : type === "strike" ? "</s>" : "</mark>");
+const htmlToMarkup = (html) => String(html || "").replace(/<strong>([\s\S]*?)<\/strong>/gi, "[[bold]]$1[[/bold]]").replace(/<em>([\s\S]*?)<\/em>/gi, "[[italic]]$1[[/italic]]").replace(/<u>([\s\S]*?)<\/u>/gi, "[[underline]]$1[[/underline]]").replace(/<s>([\s\S]*?)<\/s>|<strike>([\s\S]*?)<\/strike>/gi, (_, a, b) => `[[strike]]${a || b}[[/strike]]`).replace(/<mark[^>]*background-color:\s*([^;"']+)[^>]*>([\s\S]*?)<\/mark>/gi, (_, color, content) => `[[highlight-${color.replace("#", "")}]]${content}[[/highlight-${color.replace("#", "")}]]`).replace(/<div>/gi, "\n").replace(/<br\s*\/?\s*>/gi, "\n").replace(/<[^>]+>/g, "");
 const DOCUMENT_HIGHLIGHT_COLORS = [["Yellow", "#fff59d"], ["Green", "#b9f6ca"], ["Blue", "#bbdefb"], ["Red", "#ffcdd2"], ["Pink", "#f8bbd0"], ["Purple", "#d1c4e9"], ["Orange", "#ffcc80"], ["Gray", "#eeeeee"]];
 const RichTextToolbar = ({ onFormat, onColor }) => <div className="sticky top-0 z-20 flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-blue-200 bg-blue-50 p-2 shadow-sm">
   {DOCUMENT_FORMATS.map(([format, Icon]) => <button key={format} type="button" title={format} aria-label={format} onMouseDown={(event) => { event.preventDefault(); onFormat(format); }} className="grid size-8 place-items-center rounded border border-blue-200 bg-white text-slate-700 hover:bg-blue-100"><Icon size={15}/></button>)}
@@ -764,13 +766,13 @@ const RichTextToolbar = ({ onFormat, onColor }) => <div className="sticky top-0 
 </div>;
 const RichTextEditor = ({ value, onChange, className = "" }) => {
   const ref = useRef(null);
-  const valueRef = useRef(value);
-  valueRef.current = value;
+  const valueRef = useRef(value); valueRef.current = value;
   const selection = useRef({ start: 0, end: 0 });
-  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; const latest = valueRef.current; const nextValue = applyDocumentFormat(latest, start, end, name); element.value = nextValue; valueRef.current = nextValue; const nextStart = start + name.length + 4; const nextEnd = end + name.length + 4; selection.current = { start: nextStart, end: nextEnd }; element.focus(); element.setSelectionRange(nextStart, nextEnd); flushSync(() => onChange(nextValue)); };
-  const color = (hex) => format(`highlight-${hex.replace("#", "")}`);
+  const format = (name) => { const command = name === "bold" ? "bold" : name === "italic" ? "italic" : name === "underline" ? "underline" : "strikeThrough"; document.execCommand(command); onChange(htmlToMarkup(ref.current?.innerHTML || "")); };
+  const color = (hex) => { document.execCommand("backColor", false, hex); onChange(htmlToMarkup(ref.current?.innerHTML || "")); };
   const rememberSelection = () => { if (ref.current) selection.current = { start: ref.current.selectionStart, end: ref.current.selectionEnd }; };
-  return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><textarea ref={ref} value={value} onChange={(event) => onChange(event.target.value)} onSelect={rememberSelection} onMouseUp={rememberSelection} onKeyUp={rememberSelection} className="min-h-0 h-full w-full resize-y border-0 p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
+  useEffect(() => { if (ref.current && ref.current.innerHTML !== markupToHtml(value)) ref.current.innerHTML = markupToHtml(value); }, [value]);
+  return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><div ref={ref} contentEditable suppressContentEditableWarning onInput={() => onChange(htmlToMarkup(ref.current?.innerHTML || ""))} onSelect={rememberSelection} className="min-h-32 h-full w-full overflow-y-auto whitespace-pre-wrap p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
 };
 const FormattedDocumentText = ({ text }) => {
   const render = (value, prefix = "f") => { const match = String(value || "").match(/^([\s\S]*?)\[\[(bold|italic|underline|strike|highlight-([a-z0-9]+))\]\]([\s\S]*?)\[\[\/\2\]\]([\s\S]*)$/); if (!match) return <>{value}</>; const styles = { bold: "font-bold", italic: "italic", underline: "underline", strike: "line-through" }; return <>{match[1]}<span key={prefix} className={styles[match[2]] || ""} style={match[4] ? { backgroundColor: `#${match[4]}` } : undefined}>{render(match[5], `${prefix}-in`)}</span>{render(match[6], `${prefix}-out`)}</>; };
