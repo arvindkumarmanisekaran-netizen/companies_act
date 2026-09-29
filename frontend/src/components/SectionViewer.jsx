@@ -1017,7 +1017,7 @@ const calloutTypeDetails = (type) => CALLOUT_TYPES[type] || {
   icon: MessageSquareText,
 };
 
-const GLOSSARY_EXCLUDED_TERMS = new Set(["act", "company"]);
+const GLOSSARY_EXCLUDED_TERMS = new Set(["act", "company", "prescribed"]);
 
 const escapeRegularExpression = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
