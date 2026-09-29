@@ -512,11 +512,9 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
     }
 
     captureEvent("search_completed", { query, result_count: matches.length });
-    const destination = matches[0];
-    if (destination) {
-      captureEvent("search_result_selected", { query, section_number: destination.section_number, selection_type: "first_result" });
-      jumpToSection(destination.section_number, destination.provision_id);
-    }
+    // Text searches keep the results panel open; navigation happens only when
+    // the user selects a specific result.
+
   };
 
   const shareApp = async () => {
