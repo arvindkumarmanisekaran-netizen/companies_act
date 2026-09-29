@@ -851,12 +851,14 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     .at(-1);
 
   const saveDocument = async () => {
-    const savedScrollY = window.scrollY;
+    const scrollElement = globalThis.document.querySelector("main.overflow-y-auto");
+    const savedScrollY = scrollElement?.scrollTop ?? window.scrollY;
+    const restoreScroll = () => { if (scrollElement) scrollElement.scrollTop = savedScrollY; else window.scrollTo({ top: savedScrollY, behavior: "auto" }); };
     const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: draft.instrument_type || (context?.category === "Notifications" ? "notification" : "rules"), provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
-    if (creating) { context?.onCreated?.(); onChanged?.(); onClose(); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: "auto" }))); return; }
-    document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: savedScrollY, behavior: "auto" })));
+    if (creating) { context?.onCreated?.(); onChanged?.(); onClose(); requestAnimationFrame(() => requestAnimationFrame(restoreScroll)); return; }
+    document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
   const addReference = async (documentId) => { const response = await adminFetch("/api/admin/relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document_id: documentId, provision_id: targetProvisionId, relationship_type: "references" }) }); const payload = await response.json().catch(() => ({})); if (!response.ok) return setMessage(payload.detail || "Unable to add reference"); onChanged?.(); onClose(); };
@@ -1541,9 +1543,10 @@ export const SectionCard = ({
     return readReaderCache(cacheKey)?.data || null;
   });
   const [activeDocuments, setActiveDocuments] = useState(null);
-  const documentScrollRef = useRef(0);
-  const openDocuments = (context) => { documentScrollRef.current = window.scrollY; setActiveDocuments(context); };
-  const closeDocuments = () => { setActiveDocuments(null); requestAnimationFrame(() => window.scrollTo({ top: documentScrollRef.current, behavior: "auto" })); };
+  const documentScrollRef = useRef({ element: null, top: 0 });
+  const openDocuments = (context) => { const element = globalThis.document.querySelector("main.overflow-y-auto"); documentScrollRef.current = { element, top: element?.scrollTop ?? window.scrollY }; setActiveDocuments(context); };
+  const restoreDocumentScroll = () => { const { element, top } = documentScrollRef.current; if (element) element.scrollTop = top; else window.scrollTo({ top, behavior: "auto" }); };
+  const closeDocuments = () => { setActiveDocuments(null); requestAnimationFrame(() => requestAnimationFrame(restoreDocumentScroll)); };
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [adminRecord, setAdminRecord] = useState(null);
   const [adminDraft, setAdminDraft] = useState("");
