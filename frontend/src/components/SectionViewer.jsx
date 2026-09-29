@@ -857,7 +857,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: draft.instrument_type || (context?.category === "Notifications" ? "notification" : "rules"), provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
-    if (creating) { context?.onCreated?.(); onChanged?.(); onClose(); requestAnimationFrame(() => requestAnimationFrame(restoreScroll)); return; }
+    if (creating) { context?.onCreated?.(payload); onChanged?.(); onClose(); requestAnimationFrame(() => requestAnimationFrame(restoreScroll)); return; }
     document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
@@ -1319,7 +1319,7 @@ const AnchoredText = ({ text = "", callouts = [], provisionId, adminMode, onOpen
   return <span ref={rootRef} onDragOver={dragOver} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setPreviewAnchor(null); }} onDrop={drop} className={`${className} ${!text ? "inline-flex min-h-10 w-full items-center justify-center" : ""} ${adminMode ? "rounded outline-offset-4 hover:outline hover:outline-2 hover:outline-dashed hover:outline-amber-300" : ""}`}>{parts}{!text && adminMode && !bulbs.length && !previewAnchor && <span className="text-xs font-semibold text-amber-700">Drop a bulb here for the end of the section</span>}</span>;
 };
 
-const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false, onChanged, onCountChange, targetProvisionId }) => {
+const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false, onChanged, onCountChange, onCreated, targetProvisionId }) => {
   const [removeMode, setRemoveMode] = useState(false);
   const [removedIds, setRemovedIds] = useState(() => new Set());
   const [orderedRelationships, setOrderedRelationships] = useState(relationships);
@@ -1342,7 +1342,7 @@ const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false
     setRemovedIds(new Set());
   }, [targetProvisionId, label]);
   const visibleRelationships = orderedRelationships.filter((relationship) => !removedIds.has(relationship.relationship_id));
-  const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id, onCreated: () => onCountChange?.(1) });
+  const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id, onCreated: (created) => { onCountChange?.(1); onCreated?.(created); } });
   const moveRelationship = async (index, direction) => {
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= visibleRelationships.length) return;
@@ -1363,7 +1363,7 @@ const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false
   };
   const actions = adminMode && <div className="flex flex-wrap gap-2"><button type="button" onClick={addCustom} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white">+ Add {label}</button><button type="button" onClick={() => setRemoveMode((value) => !value)} className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700">{removeMode ? "Done" : `Remove ${label}`}</button></div>;
   if (!visibleRelationships.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center"><FileText className="mx-auto mb-3 text-slate-400"/><h4 className="font-bold text-slate-800">No {label.toLowerCase()} linked to this section</h4>{actions && <div className="mt-3 flex justify-center">{actions}</div>}</div>;
-  return <div className="space-y-3">{actions}<div className="grid gap-3">{visibleRelationships.map((relationship, index) => <div key={relationship.relationship_id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => { if (!removeMode) onOpen({ relationships: visibleRelationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id }); }} className={`min-w-0 flex-1 text-left ${removeMode ? "cursor-default" : ""}`}><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{readableInstrumentType(relationship.document.instrument_type)}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && !removeMode && <div className="flex shrink-0 items-center gap-1"><button type="button" aria-label={`Move ${relationship.document.title} up`} title="Move up" disabled={index === 0} onClick={() => moveRelationship(index, -1)} className="rounded border border-slate-300 px-2 py-1 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-30">↑</button><button type="button" aria-label={`Move ${relationship.document.title} down`} title="Move down" disabled={index === visibleRelationships.length - 1} onClick={() => moveRelationship(index, 1)} className="rounded border border-slate-300 px-2 py-1 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-30">↓</button></div>}{adminMode && removeMode && <button type="button" onClick={async (event) => { event.stopPropagation(); if (!window.confirm("Remove this document from the section?")) return; const response = await adminFetch(`/api/admin/relationships/${relationship.relationship_id}`, { method: "DELETE" }); if (response.ok) { setRemovedIds((current) => new Set([...current, relationship.relationship_id])); onCountChange?.(-1); } }} className="text-xs font-bold text-red-700">Remove</button>}</div>)}</div></div>;
+  return <div className="space-y-3">{actions}<div className="grid gap-3">{visibleRelationships.map((relationship, index) => <div key={relationship.relationship_id} data-document-id={relationship.document?.id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => { if (!removeMode) onOpen({ relationships: visibleRelationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id }); }} className={`min-w-0 flex-1 text-left ${removeMode ? "cursor-default" : ""}`}><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{readableInstrumentType(relationship.document.instrument_type)}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && !removeMode && <div className="flex shrink-0 items-center gap-1"><button type="button" aria-label={`Move ${relationship.document.title} up`} title="Move up" disabled={index === 0} onClick={() => moveRelationship(index, -1)} className="rounded border border-slate-300 px-2 py-1 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-30">↑</button><button type="button" aria-label={`Move ${relationship.document.title} down`} title="Move down" disabled={index === visibleRelationships.length - 1} onClick={() => moveRelationship(index, 1)} className="rounded border border-slate-300 px-2 py-1 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-30">↓</button></div>}{adminMode && removeMode && <button type="button" onClick={async (event) => { event.stopPropagation(); if (!window.confirm("Remove this document from the section?")) return; const response = await adminFetch(`/api/admin/relationships/${relationship.relationship_id}`, { method: "DELETE" }); if (response.ok) { setRemovedIds((current) => new Set([...current, relationship.relationship_id])); onCountChange?.(-1); } }} className="text-xs font-bold text-red-700">Remove</button>}</div>)}</div></div>;
 };
 
 const normalizeIdentifier = (value) =>
@@ -1595,7 +1595,21 @@ export const SectionCard = ({
   const [timelineRefresh, setTimelineRefresh] = useState(0);
   const [workspaceTab, setWorkspaceTab] = useState("Act");
   const [documentCountAdjustments, setDocumentCountAdjustments] = useState({});
+  const [focusDocumentId, setFocusDocumentId] = useState(null);
   useEffect(() => { setDocumentCountAdjustments({}); }, [timelineRefresh]);
+  useEffect(() => {
+    if (!focusDocumentId || !timelineData) return undefined;
+    const timer = window.setTimeout(() => {
+      const card = [...globalThis.document.querySelectorAll("[data-document-id]")].find((element) => element.dataset.documentId === focusDocumentId);
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        card.classList.add("ring-2", "ring-emerald-400");
+        window.setTimeout(() => card.classList.remove("ring-2", "ring-emerald-400"), 1800);
+      }
+      setFocusDocumentId(null);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [timelineData, focusDocumentId]);
   const [activeSectionBulb, setActiveSectionBulb] = useState(null);
   const [glossary, setGlossary] = useState([]);
   useEffect(() => {
@@ -1954,7 +1968,7 @@ export const SectionCard = ({
         )}
         {subsectionGroups.length > 0 && <div className="mt-4 border-t border-slate-200 pt-3"><AnchoredText text="" callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></div>}
         </>}
-        {categorizedDocuments[workspaceTab] && <DocumentCategoryPanel relationships={categorizedDocuments[workspaceTab]} label={workspaceTab} targetProvisionId={timelineData?.section?.id} adminMode={adminMode} onCountChange={(delta) => setDocumentCountAdjustments((current) => ({ ...current, [workspaceTab]: (current[workspaceTab] || 0) + delta }))} onChanged={() => setTimelineRefresh((value) => value + 1)} onOpen={openDocuments}/>} 
+        {categorizedDocuments[workspaceTab] && <DocumentCategoryPanel relationships={categorizedDocuments[workspaceTab]} label={workspaceTab} targetProvisionId={timelineData?.section?.id} adminMode={adminMode} onCountChange={(delta) => setDocumentCountAdjustments((current) => ({ ...current, [workspaceTab]: (current[workspaceTab] || 0) + delta }))} onCreated={(created) => setFocusDocumentId(created?.id || null)} onChanged={() => setTimelineRefresh((value) => value + 1)} onOpen={openDocuments}/>} 
         {workspaceTab === "Actionable Insights" && (insightCallouts.length > 0 ? (
           <CalloutList callouts={insightCallouts} provisionId={timelineData?.section?.id} adminMode={adminMode} onChanged={() => setTimelineRefresh((value) => value + 1)} glossary={glossary} asOfDate={asOfDate}/>
         ) : (
