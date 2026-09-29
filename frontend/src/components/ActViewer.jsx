@@ -458,7 +458,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
     window.setTimeout(() => target.classList.remove("definition-target-flash"), 1800);
   };
 
-  const jumpToSection = (value, provisionId = null) => {
+  const jumpToSection = (value, provisionId = null, keepSearch = false) => {
     const requested = String(value || "").trim().replace(/^section\s+/i, "").replace(/\.$/, "").toUpperCase();
     if (!requested) return false;
     for (const chapter of chapters) {
@@ -473,9 +473,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
         lastSectionByChapterRef.current.set(chapterNumber, sectionKey(chapter, chapter.sections[index], index));
         setSelectedChapter(chapterNumber);
         setSelectedSectionKey(sectionKey(chapter, chapter.sections[index], index));
-        setSearchTerm("");
-        setNavigationResults([]);
-        setNavigationResultQuery("");
+        if (!keepSearch) { setSearchTerm(""); setSearchSubmitted(false); setNavigationResults([]); setNavigationResultQuery(""); }
         setMobileNavOpen(false);
         if (provisionId) revealProvision(provisionId);
         else requestAnimationFrame(scrollReaderToTop);
@@ -483,6 +481,12 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
       }
     }
     return false;
+  };
+
+  const highlightSearchInSection = (query) => {
+    window.setTimeout(() => {
+      try { window.find?.(query, false, false, true); } catch { /* browser find unavailable */ }
+    }, 350);
   };
 
   const runNavigationSearch = async (value) => {
@@ -678,7 +682,7 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
                       section_number: result.section_number,
                       selection_type: "suggestion",
                     });
-                    jumpToSection(result.section_number, result.provision_id);
+                    jumpToSection(result.section_number, result.provision_id, true); highlightSearchInSection(searchTerm.trim());
                   }}
                   className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-blue-50"
                 >
