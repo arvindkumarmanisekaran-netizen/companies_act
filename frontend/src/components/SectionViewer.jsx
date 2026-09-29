@@ -763,8 +763,10 @@ const RichTextToolbar = ({ onFormat, onColor }) => <div className="sticky top-0 
 </div>;
 const RichTextEditor = ({ value, onChange, className = "" }) => {
   const ref = useRef(null);
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const selection = useRef({ start: 0, end: 0 });
-  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; onChange(applyDocumentFormat(value, start, end, name)); requestAnimationFrame(() => { const nextStart = start + name.length + 4; const nextEnd = end + name.length + 4; selection.current = { start: nextStart, end: nextEnd }; element.focus(); element.setSelectionRange(nextStart, nextEnd); }); };
+  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; const latest = valueRef.current; onChange(applyDocumentFormat(latest, start, end, name)); requestAnimationFrame(() => { const nextStart = start + name.length + 4; const nextEnd = end + name.length + 4; selection.current = { start: nextStart, end: nextEnd }; element.focus(); element.setSelectionRange(nextStart, nextEnd); }); };
   const color = (hex) => format(`highlight-${hex.replace("#", "")}`);
   const rememberSelection = () => { if (ref.current) selection.current = { start: ref.current.selectionStart, end: ref.current.selectionEnd }; };
   return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><textarea ref={ref} value={value} onChange={(event) => onChange(event.target.value)} onSelect={rememberSelection} onMouseUp={rememberSelection} onKeyUp={rememberSelection} className="min-h-0 h-full w-full resize-y border-0 p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
@@ -852,7 +854,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     const response = await adminFetch(creating ? "/api/admin/documents" : `/api/admin/documents/${encodeURIComponent(document.id)}`, { method: creating ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(creating ? { ...draft, instrument_type: draft.instrument_type || (context?.category === "Notifications" ? "notification" : "rules"), provision_id: targetProvisionId } : draft) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
-    if (creating) { setEditing(false); setMessage("Saved."); context?.onCreated?.(); onChanged?.(); return; }
+    if (creating) { context?.onCreated?.(); onChanged?.(); onClose(); return; }
     document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.();
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
