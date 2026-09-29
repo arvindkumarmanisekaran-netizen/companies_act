@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { flushSync } from "react-dom";
 import {
   ChevronLeft,
   ChevronRight,
@@ -766,7 +767,7 @@ const RichTextEditor = ({ value, onChange, className = "" }) => {
   const valueRef = useRef(value);
   valueRef.current = value;
   const selection = useRef({ start: 0, end: 0 });
-  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; const latest = valueRef.current; onChange(applyDocumentFormat(latest, start, end, name)); requestAnimationFrame(() => { const nextStart = start + name.length + 4; const nextEnd = end + name.length + 4; selection.current = { start: nextStart, end: nextEnd }; element.focus(); element.setSelectionRange(nextStart, nextEnd); }); };
+  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; const latest = valueRef.current; flushSync(() => onChange(applyDocumentFormat(latest, start, end, name))); const nextStart = start + name.length + 4; const nextEnd = end + name.length + 4; selection.current = { start: nextStart, end: nextEnd }; element.focus(); element.setSelectionRange(nextStart, nextEnd); };
   const color = (hex) => format(`highlight-${hex.replace("#", "")}`);
   const rememberSelection = () => { if (ref.current) selection.current = { start: ref.current.selectionStart, end: ref.current.selectionEnd }; };
   return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><textarea ref={ref} value={value} onChange={(event) => onChange(event.target.value)} onSelect={rememberSelection} onMouseUp={rememberSelection} onKeyUp={rememberSelection} className="min-h-0 h-full w-full resize-y border-0 p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
