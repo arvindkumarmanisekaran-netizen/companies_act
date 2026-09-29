@@ -880,20 +880,11 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
     if (creating) {
-      setCreatedDocument(payload);
-      setDraft({ title: payload.title || draft.title, full_text: draft.full_text || "", instrument_type: payload.instrument_type || draft.instrument_type });
-      context?.onCreated?.(payload); onChanged?.();
-      if (pendingPdfFile || pendingPdfSourceId) {
-        const pdfResponse = pendingPdfFile
-          ? await adminFetch(`/api/admin/documents/${encodeURIComponent(payload.id)}/pdf`, { method: "PUT", headers: { "Content-Type": "application/pdf", "X-Filename": pendingPdfFile.name }, body: pendingPdfFile })
-          : await adminFetch(`/api/admin/documents/${encodeURIComponent(payload.id)}/pdf-reference`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_document_id: pendingPdfSourceId }) });
-        const pdfPayload = await pdfResponse.json().catch(() => ({}));
-        if (pdfResponse.ok) setDocumentData((current) => ({ ...current, [payload.id]: { ...payload, ...pdfPayload } }));
-        else setMessage(pdfPayload.detail || "Document saved, but PDF attachment failed");
-        setPendingPdfFile(null); setPendingPdfSourceId("");
-      }
-      if (!pendingPdfFile && !pendingPdfSourceId) setMessage("Saved. You can attach a PDF now.");
-      requestAnimationFrame(() => requestAnimationFrame(restoreScroll)); return;
+      try { await savePendingPdf(payload.id); } catch (error) { return setMessage(error.message); }
+      context?.onCreated?.(payload);
+      onChanged?.();
+      onClose();
+      return;
     }
     try { await savePendingPdf(document.id); } catch (error) { return setMessage(error.message); }
     document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
