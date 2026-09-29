@@ -882,8 +882,8 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     if (creating) {
       try { await savePendingPdf(payload.id); } catch (error) { return setMessage(error.message); }
       context?.onCreated?.(payload);
-      onChanged?.();
       onClose();
+      onChanged?.();
       return;
     }
     try { await savePendingPdf(document.id); } catch (error) { return setMessage(error.message); }
@@ -2011,7 +2011,7 @@ export const SectionCard = ({
         )}
         {subsectionGroups.length > 0 && <div className="mt-4 border-t border-slate-200 pt-3"><AnchoredText text="" callouts={timelineData?.section_callouts || []} provisionId={timelineData?.section?.id} adminMode={adminMode} onOpenBulb={setActiveSectionBulb} glossary={glossary}/></div>}
         </>}
-        {categorizedDocuments[workspaceTab] && <DocumentCategoryPanel relationships={categorizedDocuments[workspaceTab]} label={workspaceTab} targetProvisionId={timelineData?.section?.id} adminMode={adminMode} onCountChange={(delta) => setDocumentCountAdjustments((current) => ({ ...current, [workspaceTab]: (current[workspaceTab] || 0) + delta }))} onCreated={(created) => setFocusDocumentId(created?.id || null)} onChanged={() => setTimelineRefresh((value) => value + 1)} onOpen={openDocuments}/>} 
+        {categorizedDocuments[workspaceTab] && <DocumentCategoryPanel relationships={categorizedDocuments[workspaceTab]} label={workspaceTab} targetProvisionId={timelineData?.section?.id} adminMode={adminMode} onCountChange={(delta) => setDocumentCountAdjustments((current) => ({ ...current, [workspaceTab]: (current[workspaceTab] || 0) + delta }))} onCreated={(created) => { setWorkspaceTab(/notification|circular|order/i.test(String(created?.instrument_type || "")) ? "Notifications" : "Rules"); setFocusDocumentId(created?.id || null); }} onChanged={() => setTimelineRefresh((value) => value + 1)} onOpen={openDocuments}/>} 
         {workspaceTab === "Actionable Insights" && (insightCallouts.length > 0 ? (
           <CalloutList callouts={insightCallouts} provisionId={timelineData?.section?.id} adminMode={adminMode} onChanged={() => setTimelineRefresh((value) => value + 1)} glossary={glossary} asOfDate={asOfDate}/>
         ) : (
