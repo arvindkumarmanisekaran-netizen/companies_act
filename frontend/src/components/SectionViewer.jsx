@@ -764,14 +764,14 @@ const RichTextToolbar = ({ onFormat, onColor }) => <div className="sticky top-0 
 const RichTextEditor = ({ value, onChange, className = "" }) => {
   const ref = useRef(null);
   const selection = useRef({ start: 0, end: 0 });
-  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; onChange(applyDocumentFormat(value, start, end, name)); requestAnimationFrame(() => { element.focus(); element.setSelectionRange(start + name.length + 4, end + name.length + 4); }); };
+  const format = (name) => { const element = ref.current; if (!element) return; const { start, end } = selection.current; if (start === end) return; onChange(applyDocumentFormat(value, start, end, name)); requestAnimationFrame(() => { const nextStart = start + name.length + 4; const nextEnd = end + name.length + 4; selection.current = { start: nextStart, end: nextEnd }; element.focus(); element.setSelectionRange(nextStart, nextEnd); }); };
   const color = (hex) => format(`highlight-${hex.replace("#", "")}`);
   const rememberSelection = () => { if (ref.current) selection.current = { start: ref.current.selectionStart, end: ref.current.selectionEnd }; };
   return <div className={`overflow-hidden rounded-lg border border-blue-300 ring-2 ring-blue-100 ${className}`}><RichTextToolbar onFormat={format} onColor={color}/><textarea ref={ref} value={value} onChange={(event) => onChange(event.target.value)} onSelect={rememberSelection} onMouseUp={rememberSelection} onKeyUp={rememberSelection} className="min-h-0 h-full w-full resize-y border-0 p-4 font-sans text-sm leading-7 outline-none" spellCheck="true"/></div>;
 };
 const FormattedDocumentText = ({ text }) => {
-  const parts = String(text || "").split(/(\[\[(?:bold|italic|underline|strike|highlight-[a-z0-9]+)\]\].*?\[\[\/(?:bold|italic|underline|strike|highlight-[a-z0-9]+)\]\])/gs);
-  return <>{parts.map((part, index) => { const match = part.match(/^\[\[(bold|italic|underline|strike|highlight-([a-z0-9]+))\]\]([\s\S]*?)\[\[\/\1\]\]$/); if (!match) return <React.Fragment key={index}>{part}</React.Fragment>; const styles = { bold: "font-bold", italic: "italic", underline: "underline", strike: "line-through" }; return <span key={index} className={styles[match[1]] || ""} style={match[2] ? { backgroundColor: `#${match[2]}` } : undefined}>{match[3]}</span>; })}</>;
+  const render = (value, prefix = "f") => { const match = String(value || "").match(/^([\s\S]*?)\[\[(bold|italic|underline|strike|highlight-([a-z0-9]+))\]\]([\s\S]*?)\[\[\/\2\]\]([\s\S]*)$/); if (!match) return <>{value}</>; const styles = { bold: "font-bold", italic: "italic", underline: "underline", strike: "line-through" }; return <>{match[1]}<span key={prefix} className={styles[match[2]] || ""} style={match[4] ? { backgroundColor: `#${match[4]}` } : undefined}>{render(match[5], `${prefix}-in`)}</span>{render(match[6], `${prefix}-out`)}</>; };
+  return <>{render(String(text || ""))}</>;
 };
 const displayInlineText = (value, glossary, provisionId, adminMode) => String(value || "").includes("[[")
   ? <FormattedDocumentText text={value}/>
