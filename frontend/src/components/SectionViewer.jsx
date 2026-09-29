@@ -802,6 +802,9 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const [documentData, setDocumentData] = useState({});
   const [loadingText, setLoadingText] = useState(false);
   const [showAddReference, setShowAddReference] = useState(false);
+  const [pdfQuery, setPdfQuery] = useState("");
+  const [pdfResults, setPdfResults] = useState([]);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const relationship = relationships?.[activeIndex];
   const document = creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document;
   const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
@@ -861,6 +864,9 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
+  const searchPdfDocuments = async () => { if (!pdfQuery.trim()) return; setPdfBusy(true); const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(pdfQuery.trim())}`); const payload = await response.json().catch(() => ({})); setPdfResults(payload.results || []); setPdfBusy(false); };
+  const attachExistingPdf = async (sourceDocumentId) => { setPdfBusy(true); const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(document.id)}/pdf-reference`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_document_id: sourceDocumentId }) }); const payload = await response.json().catch(() => ({})); setPdfBusy(false); if (!response.ok) return setMessage(payload.detail || "Unable to attach PDF"); setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload } })); setPdfResults([]); setPdfQuery(""); setMessage("PDF attached."); };
+  const uploadPdf = async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; setPdfBusy(true); const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(document.id)}/pdf`, { method: "PUT", headers: { "Content-Type": "application/pdf", "X-Filename": file.name }, body: file }); const payload = await response.json().catch(() => ({})); setPdfBusy(false); if (!response.ok) return setMessage(payload.detail || "Unable to upload PDF"); setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload } })); setMessage("PDF uploaded."); };
   const addReference = async (documentId) => { const response = await adminFetch("/api/admin/relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document_id: documentId, provision_id: targetProvisionId, relationship_type: "references" }) }); const payload = await response.json().catch(() => ({})); if (!response.ok) return setMessage(payload.detail || "Unable to add reference"); onChanged?.(); onClose(); };
   const removeReference = async (id) => { if (!window.confirm("Remove this PDF reference?")) return; const response = await adminFetch(`/api/admin/relationships/${id}`, { method: "DELETE" }); if (!response.ok) return setMessage("Unable to remove reference"); onChanged?.(); onClose(); };
 
@@ -899,6 +905,15 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           >
             Download PDF
           </a>}
+          {adminMode && editing && !creating && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700">Upload PDF<input type="file" accept="application/pdf,.pdf" onChange={uploadPdf} disabled={pdfBusy} className="hidden" /></label>
+              <button type="button" onClick={() => setShowAddReference((value) => !value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">{showAddReference ? "Hide PDF search" : "Use existing PDF"}</button>
+              {pdfBusy && <span className="text-xs text-slate-500">Working…</span>}
+            </div>
+            {showAddReference && <div className="mt-2 flex flex-wrap gap-2"><input value={pdfQuery} onChange={(event) => setPdfQuery(event.target.value)} onKeyDown={(event) => event.key === "Enter" && searchPdfDocuments()} placeholder="Search documents with PDFs" className="min-w-56 flex-1 rounded border border-slate-300 px-2 py-1.5 text-xs"/><button type="button" onClick={searchPdfDocuments} className="rounded bg-blue-950 px-3 py-1.5 text-xs font-bold text-white">Search</button></div>}
+            {pdfResults.length > 0 && <div className="mt-2 grid gap-1">{pdfResults.map((result) => <button key={result.id} type="button" disabled={!result.source_path && !result.source_file} onClick={() => attachExistingPdf(result.id)} className="rounded border border-slate-200 bg-white px-2 py-1.5 text-left text-xs hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"><strong className="block">{result.title}</strong><span className="text-slate-500">{result.source_path || result.source_file ? "PDF available" : "No PDF attached"}</span></button>)}</div>}
+          </div>}
         </div>
         {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && hasPdfSource ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
