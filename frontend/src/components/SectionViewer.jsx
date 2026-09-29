@@ -864,7 +864,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
 
   return (
     <div
-      className="motion-modal-backdrop fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-3 backdrop-blur-sm"
+      className="motion-modal-backdrop fixed inset-0 z-[100] grid place-items-center bg-slate-950/60 p-3 backdrop-blur-sm"
       onMouseDown={(event) => event.target === event.currentTarget && onClose()}
     >
       <section role="dialog" aria-modal="true" aria-label={document.title} className="motion-modal-panel flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl sm:h-[85dvh]">
