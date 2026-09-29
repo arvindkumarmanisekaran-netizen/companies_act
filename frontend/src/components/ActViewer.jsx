@@ -578,8 +578,18 @@ const ActViewer = ({ data, asOfDate, adminMode = false, userName = "", onLogout 
     }
 
     captureEvent("search_completed", { query, result_count: matches.length });
-    // Text searches keep the results panel open; navigation happens only when
-    // the user selects a specific result.
+    // Start find navigation on the first matching section so Previous/Next is
+    // immediately usable after pressing Enter, just like a document finder.
+    const firstMatch = matches[0];
+    if (firstMatch?.section_number) {
+      jumpToSection(firstMatch.section_number, firstMatch.provision_id, true);
+      window.setTimeout(() => highlightSearchInSection(query), 300);
+      captureEvent("search_result_selected", {
+        query,
+        section_number: firstMatch.section_number,
+        selection_type: "first_match",
+      });
+    }
 
   };
 
