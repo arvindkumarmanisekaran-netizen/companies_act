@@ -812,8 +812,9 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
   const document = createdDocument || (creating ? { id: null, title: `New ${context?.category || "document"}`, instrument_type: context?.category === "Notifications" ? "notification" : "rules" } : relationship?.document);
   const isNotification = context?.category === "Notifications" || /notification/i.test(String(document?.instrument_type || ""));
   const hasPdfSource = Boolean(document?.source_path || document?.source_file || documentData[document?.id]?.source_path || documentData[document?.id]?.source_file);
+  const pdfVersion = documentData[document?.id]?.source_path || documentData[document?.id]?.source_file || document?.source_path || document?.source_file || "none";
   const pdfUrl = document?.id
-    ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf`
+    ? `${apiBaseUrl}/api/documents/${encodeURIComponent(document.id)}/pdf?v=${encodeURIComponent(pdfVersion)}`
     : "";
   const pdfSource = {
     file: document?.id || "document.pdf",
@@ -921,7 +922,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
 
           {(documentData[document?.id]?.source_path || documentData[document?.id]?.source_file) && <div className="flex flex-wrap items-center gap-2">
-            <a href={`${pdfUrl}?download=true`} className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-blue-950 px-4 text-sm font-semibold text-white">Download PDF</a>
+            <a href={`${pdfUrl}&download=true`} className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-blue-950 px-4 text-sm font-semibold text-white">Download PDF</a>
             {adminMode && editing && <button type="button" onClick={removePdf} disabled={pdfBusy} className="inline-flex min-h-10 items-center rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-red-700 disabled:opacity-50">Remove PDF</button>}
             {adminMode && editing && <span className="text-xs text-slate-500">Attached: {documentData[document?.id]?.source_file || documentData[document?.id]?.source_path}</span>}
           </div>}
