@@ -776,6 +776,7 @@ const FormattedDocumentText = ({ text }) => {
 const displayInlineText = (value, glossary, provisionId, adminMode) => String(value || "").includes("[[")
   ? <FormattedDocumentText text={value}/>
   : <GlossaryText glossary={glossary} currentProvisionId={provisionId} adminMode={adminMode}>{value}</GlossaryText>;
+const readableInstrumentType = (value) => String(value || "Document").replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 const DOCUMENT_CACHE_KEY = "companies-act:document-cache:v1";
 const PDF_CACHE_KEY = "companies-act:pdf-cache:v1";
 const textHash = (value) => { let hash = 2166136261; for (const character of String(value || "")) { hash ^= character.charCodeAt(0); hash = Math.imul(hash, 16777619); } return (hash >>> 0).toString(16); };
@@ -816,17 +817,17 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     setActiveIndex(index >= 0 ? index : 0);
   }, [initialDocumentId, relationships.map((item) => item.document?.id).join(",")]);
   useEffect(() => {
-    if (creating) { setEditing(true); setDraft({ title: "", full_text: "" }); setLoadingText(false); return undefined; }
+    if (creating) { setEditing(true); setDraft({ title: "", full_text: "", instrument_type: context?.category === "Notifications" ? "notification" : "rules" }); setLoadingText(false); return undefined; }
     setEditing(false); setDraft(null); setMessage("");
     if (!document?.id) return;
     let cancelled = false;
     setLoadingText(true);
     const load = (id) => fetch(`${apiBaseUrl}/api/documents/${encodeURIComponent(id)}`).then((response) => response.ok ? response.json() : null).then((item) => item?.id ? { ...item, full_text: cleanCorpusText(item.full_text || "") } : null).catch(() => null);
     const cached = readLru(DOCUMENT_CACHE_KEY).find((item) => item.id === document.id);
-    if (cached?.full_text) { setDocumentData((current) => ({ ...current, [cached.id]: cached })); if (adminMode) setDraft({ title: cached.title || "", full_text: cached.full_text || "" }); setLoadingText(false); }
+    if (cached?.full_text) { setDocumentData((current) => ({ ...current, [cached.id]: cached })); if (adminMode) setDraft({ title: cached.title || "", full_text: cached.full_text || "", instrument_type: cached.instrument_type || "rules" }); setLoadingText(false); }
     load(document.id).then((active) => {
       if (cancelled) return;
-      if (active) { const entry = { ...active, content_hash: textHash(active.full_text) }; const cachedHash = readLru(DOCUMENT_CACHE_KEY).find((item) => item.id === active.id)?.content_hash; if (cachedHash !== entry.content_hash) setDocumentData((current) => ({ ...current, [active.id]: entry })); if (adminMode) setDraft({ title: active.title || "", full_text: active.full_text || "" }); const entries = readLru(DOCUMENT_CACHE_KEY).filter((item) => item.id !== active.id); writeLru(DOCUMENT_CACHE_KEY, [...entries, entry], 20); }
+      if (active) { const entry = { ...active, content_hash: textHash(active.full_text) }; const cachedHash = readLru(DOCUMENT_CACHE_KEY).find((item) => item.id === active.id)?.content_hash; if (cachedHash !== entry.content_hash) setDocumentData((current) => ({ ...current, [active.id]: entry })); if (adminMode) setDraft({ title: active.title || "", full_text: active.full_text || "", instrument_type: active.instrument_type || "rules" }); const entries = readLru(DOCUMENT_CACHE_KEY).filter((item) => item.id !== active.id); writeLru(DOCUMENT_CACHE_KEY, [...entries, entry], 20); }
       setLoadingText(false);
       Promise.all(relationships.filter((item) => item.document?.id !== document.id).map((item) => load(item.document.id))).then((items) => {
         if (cancelled) return;
@@ -851,7 +852,7 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setMessage(payload.detail || "Save failed");
     if (creating) { setEditing(false); setMessage("Saved."); onChanged?.(); return; }
-    document.title = payload.title; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.();
+    document.title = payload.title; document.instrument_type = payload.instrument_type || document.instrument_type; setDocumentData((current) => ({ ...current, [document.id]: { ...(current[document.id] || {}), ...payload, full_text: cleanCorpusText(draft?.full_text || "") } })); setEditing(false); setMessage("Saved."); onChanged?.();
   };
   const searchDocuments = async () => { const response = await adminFetch(`/api/admin/documents?q=${encodeURIComponent(documentQuery)}`); const payload = await response.json(); setDocumentResults(payload.results || []); };
   const addReference = async (documentId) => { const response = await adminFetch("/api/admin/relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ document_id: documentId, provision_id: targetProvisionId, relationship_type: "references" }) }); const payload = await response.json().catch(() => ({})); if (!response.ok) return setMessage(payload.detail || "Unable to add reference"); onChanged?.(); onClose(); };
@@ -874,9 +875,9 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
         <header className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b bg-white px-4 py-3">
           <div className="min-w-0">
             <span className="inline-flex rounded bg-blue-100 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-blue-900">
-              {document.instrument_type || "Legal document"}
+              {readableInstrumentType(document.instrument_type)}
             </span>
-            {editing ? <input value={draft?.title || ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="mt-2 w-full rounded border border-blue-300 px-2 py-1 text-base font-bold"/> : <h4 className="mt-2 text-base font-extrabold leading-snug text-slate-900">{draft?.title || document.title}</h4>}
+            {editing ? <><input value={draft?.title || ""} onChange={(e) => setDraft({ ...draft, title: e.target.value })} className="mt-2 w-full rounded border border-blue-300 px-2 py-1 text-base font-bold"/><select value={draft?.instrument_type || "rules"} onChange={(e) => setDraft({ ...draft, instrument_type: e.target.value })} className="mt-2 rounded border border-blue-300 px-2 py-1 text-xs"><option value="rules">Rules</option><option value="amendment_rules">Amendment rules</option><option value="removal_of_difficulties_order">Removal of difficulties order</option><option value="notification">Notification</option><option value="circular">Circular</option></select></> : <h4 className="mt-2 text-base font-extrabold leading-snug text-slate-900">{draft?.title || document.title}</h4>}
           </div>
           <button type="button" onClick={onClose} className="grid size-10 shrink-0 place-items-center rounded-lg hover:bg-slate-100" aria-label="Close document details">
             <X size={20} />
@@ -886,12 +887,12 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
         <div className="max-h-[55vh] shrink-0 space-y-4 overflow-y-auto p-4 text-sm text-slate-700">
           {message && <div className="text-xs font-semibold text-blue-800">{message}</div>}
 
-          <a
+          {(documentData[document?.id]?.source_path || documentData[document?.id]?.source_file) && <a
             href={`${pdfUrl}?download=true`}
             className="inline-flex min-h-10 shrink-0 items-center rounded-lg bg-blue-950 px-4 text-sm font-semibold text-white"
           >
             Download PDF
-          </a>
+          </a>}
         </div>
         {editing ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification ? <ContinuousPdfViewer key={pdfUrl} source={pdfSource} /> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
@@ -1319,7 +1320,7 @@ const DocumentCategoryPanel = ({ relationships, label, onOpen, adminMode = false
   const addCustom = () => onOpen({ create: true, category: label, targetProvisionId: targetProvisionId || relationships[0]?.target_provision_id });
   const actions = adminMode && <div className="flex flex-wrap gap-2"><button type="button" onClick={addCustom} className="rounded-lg bg-blue-950 px-3 py-2 text-xs font-bold text-white">+ Add {label}</button><button type="button" onClick={() => setRemoveMode((value) => !value)} className="rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700">{removeMode ? "Done" : `Remove ${label}`}</button></div>;
   if (!relationships.length) return <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center"><FileText className="mx-auto mb-3 text-slate-400"/><h4 className="font-bold text-slate-800">No {label.toLowerCase()} linked to this section</h4>{actions && <div className="mt-3 flex justify-center">{actions}</div>}</div>;
-  return <div className="space-y-3">{actions}<div className="grid gap-3">{relationships.map((relationship) => <div key={relationship.relationship_id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => onOpen({ relationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id })} className="min-w-0 flex-1 text-left"><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{relationship.document.instrument_type || "Document"}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && removeMode && String(relationship.document?.id || "").startsWith("custom:") && <button type="button" onClick={async () => { if (!window.confirm("Delete this custom document?")) return; const response = await adminFetch(`/api/admin/documents/${encodeURIComponent(relationship.document.id)}`, { method: "DELETE" }); if (response.ok) onChanged?.(); }} className="text-xs font-bold text-red-700">Delete</button>}</div>)}</div></div>;
+  return <div className="space-y-3">{actions}<div className="grid gap-3">{relationships.map((relationship) => <div key={relationship.relationship_id} className="document-card flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><button type="button" onClick={() => onOpen({ relationships, category: label, initialDocumentId: relationship.document?.id, targetProvisionId: relationship.target_provision_id })} className="min-w-0 flex-1 text-left"><span className="text-[11px] font-bold uppercase tracking-wide text-blue-800">{readableInstrumentType(relationship.document.instrument_type)}</span><strong className="mt-1 block text-sm leading-6 text-slate-900">{relationship.document.title}</strong>{relationship.document.publication_date && <span className="mt-1 block text-xs text-slate-500">{relationship.document.publication_date}</span>}</button>{adminMode && removeMode && <button type="button" onClick={async () => { if (!window.confirm("Remove this document from the section?")) return; const response = await adminFetch(`/api/admin/relationships/${relationship.relationship_id}`, { method: "DELETE" }); if (response.ok) onChanged?.(); }} className="text-xs font-bold text-red-700">Remove</button>}</div>)}</div></div>;
 };
 
 const normalizeIdentifier = (value) =>
