@@ -953,8 +953,9 @@ const CorpusDocumentModal = ({ context, onClose, adminMode = false, onChanged })
             {showAddReference && !pdfBusy && pdfQuery.trim() && !pdfResults.length && <p className="mt-2 text-xs text-slate-500">No documents with an attached PDF found.</p>}
           </div>}
         </div>
-        {editing && !(creating && isNotification) ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : isNotification && (hasPdfSource || pendingPdfPreviewUrl || pendingPdfSourceId) ? <ContinuousPdfViewer key={previewPdfUrl} source={pdfSource} /> : (
+        {editing && !(creating && isNotification) ? <RichTextEditor value={draft?.full_text || ""} onChange={(full_text) => setDraft({ ...draft, full_text })} className="m-4 min-h-0 flex-1"/> : (
           <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
+            <h5 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-500">Converted English text</h5>
             {loadingText ? <p className="text-sm text-slate-500">Loading document text…</p> : <div className="whitespace-pre-wrap font-sans text-[15px] leading-7 text-slate-800"><FormattedDocumentText text={activeDocument?.full_text ?? draft?.full_text ?? "No converted text is available for this document."}/></div>}
           </div>
         )}
